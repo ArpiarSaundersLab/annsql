@@ -1,0 +1,97 @@
+Metadata-Version: 2.1
+Name: AnnSQL
+Version: 0.1
+Summary: A SQL wrapper for querying AnnData objects.
+Home-page: https://github.com/kennypavan/AnnSQL
+Author: Kenny Pavan
+Author-email: pavan@ohsu.edu
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: scanpy>=1
+
+# AnnSQL — Query AnnData Objects with SQL
+The AnnSQL package allows SQL queries on <a href="#">AnnData</a> objects and returns the results as either a <a href="#">Pandas</a> Dataframe or AnnData object. Behind the scenes, AnnSQL creates a relational <a href="#">DuckDb</a> database of all common AnnData layers. Each table can be queried individually or joined for more complex usage. To get started, please see the usage notes below or view the Jupyter notebooks and scripts in the example directory.
+
+- Query AnnData with **SQL**.
+- Return query results as Pandas Dataframes or AnnData objects.
+- Create In-memory or On-Disk databases directly from AnnData objects.
+- **Fast** for complex queries and aggregative functions.
+<br>
+
+## Installation
+```
+pip install annsql
+```
+
+## Basic Usage (In-Memory)
+Ideal for smaller datasets with <20,000 observations and features.
+```python
+from AnnSQL import AnnSQL
+import scanpy as sc
+
+#read sample data
+adata = sc.datasets.pbmc68k_reduced()
+
+#pass the AnnData object to the AnnSQL class
+adata_sql = AnnSQL(adata=adata)
+
+#query the expression table
+adata_sql.query("SELECT * FROM X")
+
+#query the observation table
+adata_sql.query("SELECT * FROM obs")
+
+#query the a join of 'X' and 'obs' table
+adata_sql.query("SELECT * FROM adata")
+```
+
+
+## Basic Usage (On-Disk)
+For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="#">manuscript</a> for benchmarks.
+```python
+import scanpy as sc
+from MakeDb import MakeDb
+
+#read sample data
+adata = sc.datasets.pbmc68k_reduced()
+
+#build the AnnSQL database
+MakeDb(adata=adata, db_name="pbmc3k_reduced", db_path="db/")
+
+#open the AnnSQL database
+adata_sql = AnnSQL(db="db/pbmc3k_reduced.asql")
+
+#query the expression table
+adata_sql.query("SELECT * FROM X")
+```
+
+## Entity Relationship Diagram
+
+## Advanced Queries
+
+## API
+AnnSQL
+	Parameters
+		 adata
+		 db_name
+		 db_path
+		 create_all_indexes
+	Methods
+		query
+		update_query
+		show_tables
+		show_settings
+
+MakeDb
+	Parameters
+		 adata
+		 db_name
+		 db_path
+		 create_all_indexes
+
+## Notes
+
+## Citation
