@@ -29,14 +29,14 @@ adata = sc.datasets.pbmc68k_reduced()
 #instantiate the AnnData object
 adata_sql = AnnSQL(adata=adata)
 
-#query the expression table
+#query the expression table. Returns Pandas Dataframe by Default
 adata_sql.query("SELECT * FROM X")
 
-#query the observation table
-adata_sql.query("SELECT * FROM obs")
+#query the observation table. Returns adata object.
+adata_sql.query("SELECT * FROM obs", return_type="adata")
 
 #query the join of 'X' and 'obs' table
-adata_sql.query("SELECT * FROM adata")
+adata_sql.query("SELECT * FROM adata", return_type="parquet")
 ```
 
 
