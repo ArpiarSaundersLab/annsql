@@ -7,10 +7,11 @@ import logging
 import os 
 
 class AnnSQL:
-	def __init__(self, adata=None, db=None, create_all_indexes=False):
+	def __init__(self, adata=None, db=None, create_all_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = adata
 		self.db = db
 		self.create_all_indexes = create_all_indexes
+		self.layers = layers
 		self.validate_params()
 		if self.db is None:
 			self.build_db()
@@ -39,7 +40,7 @@ class AnnSQL:
 
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
-		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes)
+		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, layers=self.layers)
 		self.conn = db.conn
 
 	def query(self, query, return_type='pandas'):

@@ -5,12 +5,12 @@ import duckdb
 import os 
 
 class MakeDb:
-	def __init__(self, adata=None, db_name=None, db_path="db/", create_all_indexes=False, add_uns=True, convenience_view=True):
+	def __init__(self, adata=None, db_name=None, db_path="db/", create_all_indexes=False, convenience_view=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = adata
 		self.db_name = db_name
 		self.db_path = db_path
+		self.layers = layers
 		self.create_all_indexes = create_all_indexes
-		self.add_uns = add_uns
 		self.convenience_view = convenience_view
 		self.validate_params()
 		self.build_db()
@@ -34,5 +34,5 @@ class MakeDb:
 
 	def build_db(self):
 		self.create_db()
-		BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, add_uns=self.add_uns, convenience_view=self.convenience_view)
+		BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, convenience_view=self.convenience_view, layers=self.layers)
 		self.conn.close()

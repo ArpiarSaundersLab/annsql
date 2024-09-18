@@ -187,7 +187,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
 <br>
 
 ## Notes
-There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive syntax for filtering and querying your data, or (2) if you're working with datasets that exceed memory limits and require loading AnnData in backed mode. Using backed mode in AnnData can limit available functions, especially aggregate operations, and slow down data access. **AnnSQL** offers a solution by enabling SQL-style queries that may perform more efficiently in these scenarios. Below are rough runtime comparisons between AnnData (backed mode) and AnnSQL once the database has been built. 
+There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive syntax for filtering and querying your data, or (2) if you're working with datasets that exceed memory limits and require loading AnnData in backed mode. Using backed mode in AnnData can limit available functions, especially aggregate operations, and slow down data access. **AnnSQL** offers a solution by enabling SQL-style queries that may perform more efficiently in these scenarios. Below are rough runtime comparisons between AnnData (in backed mode) and AnnSQL after a  database has been built. 
 
 
 <img src="examples/images/comparision_backed.png">

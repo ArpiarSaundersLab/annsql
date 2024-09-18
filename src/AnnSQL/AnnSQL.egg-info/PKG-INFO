@@ -12,7 +12,10 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: scanpy>=1
 
-# AnnSQL — Query AnnData Objects with SQL
+<center><img src="examples/images/logo.png" width=500></center>
+<br />
+
+# Query AnnData Objects with SQL
 The AnnSQL package enables SQL-based queries on [AnnData](https://anndata.readthedocs.io/en/latest/) objects, returning results as either a [Pandas](https://pandas.pydata.org/) DataFrame, an AnnData object, or a [Parquet](https://parquet.apache.org/) file that can easily be imported into a variety of data analysis tools. Behind the scenes, AnnSQL converts the layers of an AnnData object into a relational [DuckDB](https://duckdb.org/) database. Each layer is stored as an individual table, allowing for simple or complex SQL queries, including table joins.
 
 To get started, see the usage notes below or refer to the example scripts in the `examples` directory.
@@ -40,14 +43,14 @@ adata = sc.datasets.pbmc68k_reduced()
 #instantiate the AnnData object
 adata_sql = AnnSQL(adata=adata)
 
-#query the expression table
+#query the expression table. Returns Pandas Dataframe by Default
 adata_sql.query("SELECT * FROM X")
 
-#query the observation table
-adata_sql.query("SELECT * FROM obs")
+#query the observation table. Returns adata object.
+adata_sql.query("SELECT * FROM obs", return_type="adata")
 
 #query the join of 'X' and 'obs' table
-adata_sql.query("SELECT * FROM adata")
+adata_sql.query("SELECT * FROM adata", return_type="parquet")
 ```
 
 
@@ -71,7 +74,7 @@ adata_sql.query("SELECT * FROM adata")
 ```
 
 ## Entity Relationship Diagram
-Using the <a href="">Scanpy</a> sample dataset, Processed 3k PBMCs from 10x Genomics. The following ERD was generated from the DuckDb database constructed byway of AnnSQL; and based on the AnnData object below. **Please note the database is not an optimized database structure**. Instead, the tables attempt to closely mirror the familiar structure in the AnnData object for ease of use.
+Using the [Scanpy](https://scanpy.readthedocs.io/) sample dataset, "Processed 3k PBMCs from 10x Genomics," the following ERD was generated from the DuckDB database constructed via **AnnSQL**, based on the corresponding AnnData object. **Note:** The database structure is not optimized for performance. Instead, the tables are designed to closely mirror the familiar structure of the AnnData object for ease of use.
 ```bash
 AnnData object with n_obs × n_vars = 700 × 765
     obs: 'bulk_labels', 'n_genes', 'percent_mito', 'n_counts', 'S_score', 'phase', 'louvain'
@@ -194,10 +197,17 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
 </table>
 
 
+<br>
+<br>
 
 ## Notes
+There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive syntax for filtering and querying your data, or (2) if you're working with datasets that exceed memory limits and require loading AnnData in backed mode. Using backed mode in AnnData can limit available functions, especially aggregate operations, and slow down data access. **AnnSQL** offers a solution by enabling SQL-style queries that may perform more efficiently in these scenarios. Below are rough runtime comparisons between AnnData (in backed mode) and AnnSQL after a  database has been built. 
 
 
+<img src="examples/images/comparision_backed.png">
+
+<br>
+<br>
 
 ## Citation
 Coming soon...
