@@ -9,10 +9,10 @@ import pandas as pd
 adata = sc.read_h5ad("/home/kenny/Documents/OHSU/Projects/TAP/data/celltypist_models/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r")
 
 # #build a database to query later
-# MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="db/", layers=["X", "obs"])
+# MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"])
 
 # #call the AnnSQL class
-adata_sql = AnnSQL(db="db/Macosko_Mouse_Atlas.asql")
+adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
 
 #query a table
 start_time = time.time()

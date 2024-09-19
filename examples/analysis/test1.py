@@ -9,7 +9,7 @@ from MakeDb import MakeDb
 adata = sc.datasets.pbmc68k_reduced()
 
 #call the AnnSQL class
-adata_sql = AnnSQL(db="db/pbmc68k_reduced.asql")
+adata_sql = AnnSQL(db="../db/pbmc68k_reduced.asql")
 
 #return all x
 adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)")
