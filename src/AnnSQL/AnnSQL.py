@@ -8,7 +8,7 @@ import os
 
 class AnnSQL:
 	def __init__(self, adata=None, db=None, create_all_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
-		self.adata = adata
+		self.adata = self.open_anndata(adata)
 		self.db = db
 		self.create_all_indexes = create_all_indexes
 		self.layers = layers
@@ -17,6 +17,7 @@ class AnnSQL:
 			self.build_db()
 		else:
 			self.open_db()
+
 
 	def validate_params(self):
 		if self.adata is None and self.db is None:
@@ -29,6 +30,13 @@ class AnnSQL:
 				raise ValueError('The db provided doesn\'t exist. Please check the path')
 		if self.db is not None and self.adata is None:
 			warnings.warn('Warning: No adata object provided. return_type="adata" is disabled.')
+
+	def open_anndata(self,adata):
+		if not isinstance(adata, sc.AnnData) and isinstance(adata, str):	
+			return sc.read_h5ad(adata)
+		else:
+			return adata
+			
 
 	def open_db(self):
 		if self.db is not None:

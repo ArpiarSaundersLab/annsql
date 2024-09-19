@@ -26,7 +26,7 @@ import scanpy as sc
 #read sample data
 adata = sc.datasets.pbmc68k_reduced()
 
-#instantiate the AnnData object
+#instantiate the AnnData object (you may also pass a h5ad file to the adata parameter)
 adata_sql = AnnSQL(adata=adata)
 
 #query the expression table. Returns Pandas Dataframe by Default
@@ -113,8 +113,9 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
     <tr>
       <td><code>__init__(adata, db)</code></td>
       <td>
-          <li><code>adata</code>: AnnData object (optional)</li>
+          <li><code>adata</code>: AnnData object or h5ad filepath (optional)</li>
           <li><code>db</code>: Path to DuckDB database (optional)</li>
+		  <li><code>layers</code>: List (optional. default: ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]).<i>The layers of the Anndata object to build into the database. For larger datasets, it may be beneficial to only include the layers you're interested in querying.</i></li>
           <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
       </td>
       <td>Initializes the AnnSQL object. Requires either a AnnData object (<code>adata</code>) or a DuckDB database path (<code>db</code>).</td>
@@ -175,7 +176,9 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
           <li><code>adata</code>: AnnData object (required)</li>
           <li><code>db_name</code>: Name for the database (required)</li>
           <li><code>db_path</code>: Path to store the database (default: 'db/')</li>
+		  <li><code>layers</code>: List (optional. default: ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]).<i>The layers of the Anndata object to build into the database. For larger datasets, it may be beneficial to only include the layers you're interested in querying.</i></li>
           <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
+		  <li><code>convenience_view</code>: Boolean (optional. default: True). <i>Creates the view 'adata' by joining the X and obs tables. For larger datasets, consider setting this flag to False to save resources.</i></li>
       </td>
       <td>Initializes the MakeDb object and validates parameters, then proceeds to build the DuckDB database.</td>
     </tr>
