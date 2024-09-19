@@ -111,7 +111,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
   </thead>
   <tbody>
     <tr>
-      <td><code>__init__(adata, db)</code></td>
+      <td><code>__init__(adata, db, layers, create_all_indexes)</code></td>
       <td>
           <li><code>adata</code>: AnnData object or h5ad filepath (optional)</li>
           <li><code>db</code>: Path to DuckDB database (optional)</li>
@@ -171,7 +171,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
   </thead>
   <tbody>
     <tr>
-      <td><code>__init__(adata, db_name, db_path, create_all_indexes)</code></td>
+      <td><code>__init__(adata, db_name, db_path, layers, create_all_indexes)</code></td>
       <td>
           <li><code>adata</code>: AnnData object (required)</li>
           <li><code>db_name</code>: Name for the database (required)</li>
