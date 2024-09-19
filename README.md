@@ -192,11 +192,62 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
 ## Notes
 There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive syntax for filtering and querying your data, or (2) if you're working with datasets that exceed memory limits and require loading AnnData in backed mode. Using backed mode in AnnData can limit available functions, especially aggregate operations, and slow down data access. **AnnSQL** offers a solution by enabling SQL-style queries that may perform more efficiently in these scenarios. Below are rough runtime comparisons between AnnData and AnnSQL after a database has been built. 
 
-
 <img src="examples/images/comparision.png">
 
+#### Runtime System Details
+- **Memory:**                                      40.0 GiB
+- **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
+- **Disk Capacity:**                               1.0 TB
+- **OS Name:**                                     Ubuntu 24.04.1 LTS
+- **Python Version:**                              3.12
+
 <br>
 <br>
+
+## Querying 4.4 million cells on a laptop
+To illustrate how AnnSQL can be used to access atlas sized datasets on a local computer, we examine the single nuclei dataset presented in "The molecular cytoarchitecture of the adult mouse brain" by <a href='https://www.nature.com/articles/s41586-023-06818-7' target="_blank">Langlieb et al 2023</a>. First, we opened the <a href='https://docs.braincelldata.org/downloads/index.html' target="_blank">atlas</a> AnnData object in backed mode and created a `asql` database using the `MakeDb` class provided with AnnSQL. Next, we performed some basic querying of the data to return subsets. Our next step was to calculate total counts per gene which we accomplished entirely in SQL; even with the non-optimized schema. Lastly, we calculated highly variable genes in the entire dataset using two SQL queries which: (1) provide a list of all gene names in the X table, then (2) use those gene names to calculate the variance for each gene and return a list of the top 2000. Our results demonstrate AnnSQL is a capable tool for basic (and possibly more advanced) analyses of atlas scale datasets. 
+
+```python
+#import libraries
+from MakeDb import MakeDb
+from AnnSQL import AnnSQL
+
+#load the dataset in backed mode
+adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r")
+
+#build the asql database
+MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"]) #Runtime 3hr 26mins
+
+#query example
+adata_sql.query("SELECT Gad1 FROM adata WHERE Gad1 > 0") #Runtime: X seconds
+
+#total counts per gene
+adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)") #Runtime: X seconds
+
+"""
+Calculate top 2000 highly variable genes.
+1. Get all gene column names by using the describe function
+2. Dynamically pass those genes back into a query that uses the built-in variance function
+3. Order the list and limit to the top 2000
+"""
+
+
+```
+
+#### Runtime System Details
+- **Memory:**                                      40.0 GiB
+- **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
+- **Disk Capacity:**                               1.0 TB
+- **OS Name:**                                     Ubuntu 24.04.1 LTS
+- **Python Version:**                              3.12
+
+
+<br>
+<br>
+
 
 ## Citation
 Coming soon...
+
+<br>
+<br>

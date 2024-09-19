@@ -11,7 +11,7 @@ low_range = 1000
 high_range = 100000
 comparison_records = []
 
-# iterate from 1k to x
+#iterate range
 for i in range(low_range, high_range):
 	# if i > 10000:
 	# 	break
@@ -21,11 +21,11 @@ for i in range(low_range, high_range):
 
 		print(f"Running for {i}")
 
-		# in-memory vs non-backed
+		#in-memory vs non-backed
 		adata_memory = sc.read("../data/random_data_" + str(i) + ".h5ad")
 		adata_sql_memory = AnnSQL(adata="../data/random_data_" + str(i) + ".h5ad")
 
-		# on-disk vs backed
+		#on-disk vs backed
 		adata_disk = sc.read("../data/random_data_" + str(i) + ".h5ad", backed="r")
 		adata_sql_disk = AnnSQL(db="../db/random_data_" + str(i) + ".asql")
 
@@ -298,6 +298,8 @@ comparisons['runtime_log'] = np.log(comparisons['runtime'])
 #store the data
 comparisons.to_csv("../results/comparisons.csv", index=False)
 
+#load the data
+comparisons = pd.read_csv("../results/comparisons.csv")
 
 sns.set(style="whitegrid")
 sns.lineplot(data=comparisons, x='size', y='runtime_log', hue='type')
