@@ -189,7 +189,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
 <br>
 <br>
 
-## Notes
+## Usage & Runtime Notes
 There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive syntax for filtering and querying your data, or (2) if you're working with datasets that exceed memory limits and require loading AnnData in backed mode. Using backed mode in AnnData can limit available functions, especially aggregate operations, and slow down data access. **AnnSQL** offers a solution by enabling SQL-style queries that may perform more efficiently in these scenarios. Below are rough runtime comparisons between AnnData and AnnSQL after a database has been built. 
 
 <img src="examples/images/comparision.png">
@@ -198,7 +198,7 @@ There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive 
 - **Memory:**                                      40.0 GiB
 - **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
 - **Disk Capacity:**                               1.0 TB
-- **OS Name:**                                     Ubuntu 24.04.1 LTS
+- **OS:**                                          Ubuntu 24.04.1 LTS
 - **Python Version:**                              3.12
 
 <br>
@@ -238,7 +238,7 @@ Calculate top 2000 highly variable genes.
 - **Memory:**                                      40.0 GiB
 - **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
 - **Disk Capacity:**                               1.0 TB
-- **OS Name:**                                     Ubuntu 24.04.1 LTS
+- **OS:**                                     	   Ubuntu 24.04.1 LTS
 - **Python Version:**                              3.12
 
 

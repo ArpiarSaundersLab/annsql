@@ -12,11 +12,12 @@ import matplotlib.pyplot as plt
 
 #set the iterations
 low_range = 1000
-high_range = 102000
+high_range = 250001
 
 #iterate from 1k to x
 for i in range(low_range, high_range):
-	if i % 2000 == 0:
+	#if i % 2000 == 0:
+	if i == 250000:
 		print(f"Running for {i} rows")
 
 		#the amount of columns (genes)
@@ -36,4 +37,4 @@ for i in range(low_range, high_range):
 		adata = sc.read("../data/random_data_"+str(i)+".h5ad", backed="r")
 
 		#make the database using backed mode
-		MakeDb(adata, db_path="../db/", db_name="random_data_"+str(i), create_all_indexes=False, add_uns=False, convenience_view=False)
+		MakeDb(adata, db_path="../db/", db_name="random_data_"+str(i), create_all_indexes=False, convenience_view=False)
