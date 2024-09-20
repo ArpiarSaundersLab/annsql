@@ -16,8 +16,11 @@ high_range = 250001
 
 #iterate from 1k to x
 for i in range(low_range, high_range):
-	#if i % 2000 == 0:
-	if i == 250000:
+	if i % 2000 == 0:		
+		#skip from 100k to 250k. Too much data to store locally for all the steps.
+		if i > 100000 and i < 250000:
+			continue
+
 		print(f"Running for {i} rows")
 
 		#the amount of columns (genes)

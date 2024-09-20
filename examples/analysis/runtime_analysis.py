@@ -345,13 +345,17 @@ comparisons.to_csv("../results/comparisons.csv", index=False)
 #load the data
 comparisons = pd.read_csv("../results/comparisons.csv")
 
+
+
 #plot aggregation of all filters runtime
 sns.set(style="whitegrid")
-sns.lineplot(data=comparisons, x='size', y='runtime_log10', hue='type')
-plt.ylabel("log(runtime seconds)")
+sns.lineplot(data=comparisons, x='size', y='runtime_log', hue='type')
+plt.ylabel("Runtime Seconds")
 plt.xlabel("Cell Library Count")
 plt.xticks(rotation=90)
 plt.xticks(np.arange(0, 275000, 25000))
 plt.title("Runtime of AnnSQL vs AnnData\n\nALL (6) FILTERS/QUERIES Runtime Range\n")
 plt.legend(loc='upper right', bbox_to_anchor=(1.45, 1), ncol=1)
+plt.xlim(0, 250000)
+plt.yticks(np.log([0.1, 1, 10, 100, 1000]), [0.1, 1, 10, 100, 1000])
 plt.show()
