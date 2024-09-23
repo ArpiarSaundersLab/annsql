@@ -224,7 +224,7 @@ adata_sql.query("SELECT ENSMUSG00000070880 FROM ENSMUSG00000070880 WHERE Gad1 > 
 #count the number of cells in each cluster | Runtime: 0.35sec
 adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
 
-#total counts per gene | Runtime: X seconds
+#total counts per gene | Runtime: 2min 36sec
 adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)") 
 
 

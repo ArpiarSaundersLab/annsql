@@ -14,6 +14,13 @@ import pandas as pd
 # #call the AnnSQL class
 adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
 
+#total counts per gene | Runtime: X seconds
+start_time = time.time()
+print(adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)"))
+end_time = time.time()
+print("Time taken: ", end_time-start_time)
+
+
 # start_time = time.time()
 # print(adata_sql.query("SELECT (ENSMUSG00000051951/1000*10000) FROM X"))
 # end_time = time.time()
