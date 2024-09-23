@@ -204,7 +204,7 @@ There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive 
 <br>
 <br>
 
-## Querying 4.4 million cells on a laptop
+## Accessing and processing 4.4 million cells on a laptop
 To illustrate how AnnSQL can be used to access atlas sized datasets on a local computer, we examine the single nuclei dataset presented in "The molecular cytoarchitecture of the adult mouse brain" by <a href='https://www.nature.com/articles/s41586-023-06818-7' target="_blank">Langlieb et al 2023</a>. First, we opened the <a href='https://docs.braincelldata.org/downloads/index.html' target="_blank">atlas</a> AnnData object in backed mode and created a `asql` database using the `MakeDb` class provided with AnnSQL. Next, we performed some basic querying of the data to return subsets. Our next step was to calculate total counts per gene which we accomplished entirely in SQL; even with the non-optimized schema. Lastly, we calculated highly variable genes in the entire dataset using two SQL queries which: (1) provide a list of all gene names in the X table, then (2) use those gene names to calculate the variance for each gene and return a list of the top 2000. Our results demonstrate AnnSQL is a capable tool for basic (and possibly more advanced) analyses of atlas scale datasets. 
 
 ```python
@@ -212,17 +212,29 @@ To illustrate how AnnSQL can be used to access atlas sized datasets on a local c
 from MakeDb import MakeDb
 from AnnSQL import AnnSQL
 
-#load the dataset in backed mode
-adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r")
+#load the atlas dataset in backed mode
+adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r+")
 
-#build the asql database
-MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"]) #Runtime 3hr 26mins
+#build the asql database | Runtime 7hr 10min
+MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"])
 
-#query example
-adata_sql.query("SELECT Gad1 FROM adata WHERE Gad1 > 0") #Runtime: X seconds
+#query example (GAD1 = ENSMUSG00000070880) | Runtime: 0.24sec
+adata_sql.query("SELECT ENSMUSG00000070880 FROM ENSMUSG00000070880 WHERE Gad1 > 0")
 
-#total counts per gene
-adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)") #Runtime: X seconds
+#count the number of cells in each cluster | Runtime: 0.35sec
+adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
+
+#total counts per gene | Runtime: X seconds
+adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)") 
+
+
+"""
+Normalize counts to 1e4 and log
+1. Get all gene column names by using the describe function
+2. Pass those genes into a query in chunks of 1000 (ddb limit) to get total counts
+3. normalize to 1e4 (count/total_counts)*1e4
+4. Apply the log2 filter to each value
+"""
 
 """
 Calculate top 2000 highly variable genes.

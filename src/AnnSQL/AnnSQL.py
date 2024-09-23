@@ -13,6 +13,7 @@ class AnnSQL:
 		self.create_all_indexes = create_all_indexes
 		self.layers = layers
 		self.validate_params()
+		self.is_open = False
 		if self.db is None:
 			self.build_db()
 		else:
@@ -41,10 +42,12 @@ class AnnSQL:
 	def open_db(self):
 		if self.db is not None:
 			self.conn = duckdb.connect(self.db)
+			self.is_open = True
 
 	def close_db(self):
 		if self.db is not None:
 			self.conn.close()
+			self.is_open = False
 
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
