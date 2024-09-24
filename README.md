@@ -116,7 +116,8 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
           <li><code>adata</code>: AnnData object or h5ad filepath (optional)</li>
           <li><code>db</code>: Path to DuckDB database (optional)</li>
 		  <li><code>layers</code>: List (optional. default: ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]).<i>The layers of the Anndata object to build into the database. For larger datasets, it may be beneficial to only include the layers you're interested in querying.</i></li>
-          <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
+          <li><code>create_basic_indexes</code>: Build indexed on cell_id (optional. default: False)</li>
+		  <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
       </td>
       <td>Initializes the AnnSQL object. Requires either a AnnData object (<code>adata</code>) or a DuckDB database path (<code>db</code>).</td>
     </tr>
@@ -177,7 +178,8 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
           <li><code>db_name</code>: Name for the database (required)</li>
           <li><code>db_path</code>: Path to store the database (default: 'db/')</li>
 		  <li><code>layers</code>: List (optional. default: ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]).<i>The layers of the Anndata object to build into the database. For larger datasets, it may be beneficial to only include the layers you're interested in querying.</i></li>
-          <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
+          <li><code>create_basic_indexes</code>: Build indexed on cell_id (optional. default: False)</li>
+		  <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
 		  <li><code>convenience_view</code>: Boolean (optional. default: True). <i>Creates the view 'adata' by joining the X and obs tables. For larger datasets, consider setting this flag to False to save resources.</i></li>
       </td>
       <td>Initializes the MakeDb object and validates parameters, then proceeds to build the DuckDB database.</td>
@@ -231,10 +233,32 @@ adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)
 """
 Normalize counts to 1e4 and log
 1. Get all gene column names by using the describe function
-2. Pass those genes into a query in chunks of 1000 (ddb limit) to get total counts
-3. normalize to 1e4 (count/total_counts)*1e4
-4. Apply the log2 filter to each value
+2. Pass those genes into a query in chunks to get total counts | Runtime: 4min 30sec
+3. Normalize to 1e4 and log2 | Runtime: 
 """
+
+#get the gene names
+gene_names = adata_sql.query(f"Describe X")['column_name'][1:].values
+
+#removes total_counts from the array & sets to 0
+if "total_counts" in gene_names:
+	adata_sql.update_query(f"UPDATE X SET total_counts = 0;")
+	gene_names = gene_names[:-1] 
+else:
+	adata_sql.query(f"ALTER TABLE X ADD COLUMN total_counts FLOAT DEFAULT 0;")
+
+#iterates gene_names in chunks
+chunk_size = 990 #Ddb limits arguments to 1k
+for i in range(0, len(gene_names), chunk_size):
+	chunk = gene_names[i:i+chunk_size]
+	chunk = " + ".join(chunk) + " + total_counts"
+	adata_sql.update_query(f"UPDATE X SET total_counts = ({chunk});")
+
+#normalize to 10k and log2
+for gene in gene_names:
+	adata_sql.query(f"ALTER TABLE X ALTER COLUMN {gene} TYPE FLOAT;")
+	adata_sql.update_query(f"UPDATE X SET {gene} = LOG2((({gene} / total_counts) * 1e4) + 1e-5);")
+
 
 """
 Calculate top 2000 highly variable genes.

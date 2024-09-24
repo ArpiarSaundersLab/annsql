@@ -9,44 +9,51 @@ import pandas as pd
 #adata = sc.read_h5ad("/home/kenny/Documents/OHSU/Projects/TAP/data/celltypist_models/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r")
 
 # #build a database to query later
-#MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas_4mil", db_path="../db/", layers=["X", "obs","var"])
+#MakeDb(adata=adata, 
+# 		db_name="Macosko_Mouse_Atlas_4mil", 
+# 		db_path="../db/", 
+# 		create_basic_indexes=True,
+# 		layers=["X", "obs","var"])
 
 # #call the AnnSQL class
 adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
 
-#total counts per gene | Runtime: X seconds
+###################################################
+# attempt to normalize the data
+###################################################
+#get the gene names
+gene_names = adata_sql.query(f"Describe X")['column_name'][1:].values
+
+#removes total_counts from the array & sets to 0
+if "total_counts" in gene_names:
+	adata_sql.update_query(f"UPDATE X SET total_counts = 0;")
+	gene_names = gene_names[:-1] 
+else:
+	adata_sql.query(f"ALTER TABLE X ADD COLUMN total_counts FLOAT DEFAULT 0;")
+
+#iterates gene_names in chunks
 start_time = time.time()
-print(adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)"))
+chunk_size = 990 #Ddb limits arguments to 1k
+for i in range(0, len(gene_names), chunk_size):
+	chunk = gene_names[i:i+chunk_size]
+	chunk = " + ".join(chunk) + " + total_counts"
+	adata_sql.update_query(f"UPDATE X SET total_counts = ({chunk});")
 end_time = time.time()
-print("Time taken: ", end_time-start_time)
+print("Total Counts Time: ", end_time-start_time)
 
+#necessary to break dependency to change column types
+adata_sql.query(f"DROP INDEX IF EXISTS idx_obs_cell_id;")
+adata_sql.query(f"DROP INDEX IF EXISTS idx_X_cell_id;")
 
-# start_time = time.time()
-# print(adata_sql.query("SELECT (ENSMUSG00000051951/1000*10000) FROM X"))
-# end_time = time.time()
-# print("Time taken: ", end_time-start_time)
-
-#try normalizing the data 
-gene_names = adata_sql.query("DESCRIBE X")["column_name"][0:990].values
-gene_names = " + ".join(gene_names[1:])
+#normalize to 10k and log2
 start_time = time.time()
-adata_sql.query(f"SELECT cell_id, ({gene_names}) as total_counts FROM X;")
+for gene in gene_names:
+	gene_start_time = time.time()
+	adata_sql.update_query(f"UPDATE X SET {gene} = ROUND(LOG2((({gene} / total_counts) * 1e4) + 1e-4),5);")
+	gene_end_time = time.time()
+	print(f"{gene}: ", gene_end_time-gene_start_time)
 end_time = time.time()
-print("Time taken: ", end_time-start_time)
-
-
-
-# adata_sql.query("SELECT cell_id, (ENSMUSG00000051951+ENSMUSG00000025900+ENSMUSG00000095041) FROM X")
-# adata_sql.query("""
-# SELECT 
-#   cell_id, 
-#   ROUND(ENSMUSG00000051951 / (ENSMUSG00000051951 + ENSMUSG00000025900 + ENSMUSG00000095041 + 1e-10)) AS total_counts, 
-#   LOG2(CASE 
-#          WHEN total_counts = 0 THEN 1e-10 
-#          ELSE total_counts
-#        END) AS log2_total_counts 
-# FROM X
-# """)
+print("Normalize & Log2 Time: ", end_time-start_time)
 
 
 # #Highly Variable Genes

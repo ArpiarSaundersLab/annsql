@@ -10,16 +10,17 @@ class BuildDb:
 				conn=None, 
 				adata=None, 
 				create_all_indexes=False, 
+				create_basic_indexes=False,
 				convenience_view=True,
 				layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = adata
 		self.conn = conn
 		self.create_all_indexes = create_all_indexes
+		self.create_basic_indexes = create_basic_indexes
 		self.convenience_view = convenience_view
 		self.layers = layers
 		self.build()
-		if "uns" in self.layers: 
-			#not recommended for large datasets
+		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
 
 	def build(self):
@@ -30,6 +31,15 @@ class BuildDb:
 		var_names_df.columns = ['gene']
 		obs_df.columns = ['cell_id'] + list(obs_df.columns[1:])
 		
+		#Create X with cell_id as varchar and var_names_df columns as float
+		#import to do floating point calculations in future (e.g. normalization)
+		self.conn.execute("""
+			CREATE TABLE X (
+				cell_id VARCHAR,
+				{}
+			)
+		""".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
+
 		#handle backed mode
 		if self.adata.isbacked:
 			if "X" in self.layers:
@@ -39,9 +49,9 @@ class BuildDb:
 				X_df = pd.concat([cell_id_df, X_df], axis=1)
 				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
 
-				self.conn.register('X_df', X_df)
-				self.conn.execute("CREATE TABLE X AS SELECT * FROM X_df")
-				self.conn.unregister('X_df')
+				# self.conn.register('X_df', X_df)
+				# self.conn.execute("CREATE TABLE X AS SELECT * FROM X_df")
+				# self.conn.unregister('X_df')
 
 				chunk_size = 5000 
 				print(f"Starting backed mode db creation. Total rows: {self.adata.shape[0]}")
@@ -68,7 +78,7 @@ class BuildDb:
 				X_df = pd.concat([cell_id_df, X_df], axis=1)
 				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
 				self.conn.register('X_df', X_df)
-				self.conn.execute("CREATE TABLE X AS SELECT * FROM X_df")
+				self.conn.execute("INSERT INTO X SELECT * FROM X_df")
 				self.conn.unregister('X_df')
 			else:
 				print("Skipping X layer")
@@ -141,10 +151,11 @@ class BuildDb:
 						print(f'Could not create index on {column} for obs')
 
 		#basic indexes
-		if "obs" in self.layers:
-			self.conn.execute("CREATE INDEX idx_obs_cell_id ON obs (cell_id)")
-		if "X" in self.layers:
-			self.conn.execute("CREATE INDEX idx_X_cell_id ON X (cell_id)")
+		if self.create_basic_indexes == True:
+			if "obs" in self.layers:
+				self.conn.execute("CREATE INDEX idx_obs_cell_id ON obs (cell_id)")
+			if "X" in self.layers:
+				self.conn.execute("CREATE INDEX idx_X_cell_id ON X (cell_id)")
 
 		#view for convenience (not recommended for large datasets)
 		if self.convenience_view == True and "X" in self.layers and "obs" in self.layers:
@@ -192,4 +203,6 @@ class BuildDb:
 				self.conn.execute("INSERT INTO uns_raw VALUES (?, ?, ?)", (key, serialized_value, data_type))
 			except Exception as e:
 				print(f"Error inserting key {key}: {e}")
-			
+
+	def replace_special_chars(self, string):
+		return string.replace("-", "_").replace(".", "_")

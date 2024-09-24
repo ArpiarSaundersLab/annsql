@@ -7,9 +7,10 @@ import logging
 import os 
 
 class AnnSQL:
-	def __init__(self, adata=None, db=None, create_all_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = self.open_anndata(adata)
 		self.db = db
+		self.create_basic_indexes = create_basic_indexes
 		self.create_all_indexes = create_all_indexes
 		self.layers = layers
 		self.validate_params()
@@ -51,7 +52,7 @@ class AnnSQL:
 
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
-		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, layers=self.layers)
+		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers)
 		self.conn = db.conn
 
 	def query(self, query, return_type='pandas'):
@@ -114,3 +115,6 @@ class AnnSQL:
 			self.conn.execute(query)
 			self.close_db()
 		logging.info("All tables exported as parquet files in the 'parquet_files' directory")
+	
+	def replace_special_chars(self, string):
+		return string.replace("-", "_").replace(".", "_")
