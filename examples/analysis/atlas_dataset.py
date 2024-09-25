@@ -15,7 +15,7 @@ import pandas as pd
 # 		create_basic_indexes=True,
 # 		layers=["X", "obs","var"])
 
-# #call the AnnSQL class
+#call the AnnSQL class
 adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
 
 ###################################################
@@ -41,19 +41,20 @@ for i in range(0, len(gene_names), chunk_size):
 end_time = time.time()
 print("Total Counts Time: ", end_time-start_time)
 
-#necessary to break dependency to change column types
-adata_sql.query(f"DROP INDEX IF EXISTS idx_obs_cell_id;")
-adata_sql.query(f"DROP INDEX IF EXISTS idx_X_cell_id;")
-
 #normalize to 10k and log2
 start_time = time.time()
-for gene in gene_names:
-	gene_start_time = time.time()
-	adata_sql.update_query(f"UPDATE X SET {gene} = ROUND(LOG2((({gene} / total_counts) * 1e4) + 1e-4),5);")
-	gene_end_time = time.time()
-	print(f"{gene}: ", gene_end_time-gene_start_time)
+chunk_size = 200  #reduces db memory usage
+for i in range(0, len(gene_names), chunk_size):
+	updates = []
+	interval_time = time.time()
+	chunk = gene_names[i:i + chunk_size]
+	for gene in chunk:
+		updates.append(f"{gene} = LOG2(({gene} / total_counts) * 1e4 + 1e-5)")
+	update_query = f"UPDATE X SET {', '.join(updates)}"
+	adata_sql.update_query(update_query)
+	print(f"Processed chunk {i // chunk_size + 1} in {time.time() - interval_time} seconds")
 end_time = time.time()
-print("Normalize & Log2 Time: ", end_time-start_time)
+print("Normalize & Log2 Time: ", end_time - start_time)
 
 
 # #Highly Variable Genes
