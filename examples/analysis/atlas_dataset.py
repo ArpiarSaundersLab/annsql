@@ -57,13 +57,32 @@ end_time = time.time()
 print("Normalize & Log2 Time: ", end_time - start_time)
 
 
-# #Highly Variable Genes
-# """
-# SELECT 'gene_1' AS gene, VARIANCE(gene_1) AS variance FROM X
-# UNION
-# SELECT 'gene_2', VARIANCE(gene_2) FROM X
-# UNION
-# SELECT 'gene_3', VARIANCE(gene_3) FROM X
-# ORDER BY variance DESC
-# LIMIT 2000;
-# """
+
+###################################################
+#get the top highly variable genes
+###################################################
+adata.var.to_dict()
+df = pd.DataFrame(adata.var.to_dict(), columns=["esn_name","gene_name"], index=adata.var_names)
+df["esn_name"] = df["index"]
+df = df.drop(columns=["index"])
+df = df[["gene_name", "esn_name"]]
+df["variance"] = 0
+df
+
+adata_sql.open_db()
+adata_sql.conn.register("df", df)
+adata_sql.conn.execute("DROP TABLE IF EXISTS var")
+adata_sql.conn.execute(f"CREATE TABLE var AS SELECT * FROM df")
+adata_sql.query("SELECT * FROM var")
+
+adata_sql.query(f"SELECT VARIANCE(ENSMUSG00000051951) FROM X;")
+adata_sql.query_raw(f"UPDATE var SET ENSMUSG00000051951 = VARIANCE(SELECT ENSMUSG00000051951 FROM X)")
+
+adata_sql.query_raw(f"""
+    WITH variance_computation AS (
+        SELECT VARIANCE(ENSMUSG00000051951) AS computed_variance
+        FROM X
+    )
+    UPDATE var
+    SET ENSMUSG00000051951 = (SELECT computed_variance FROM variance_computation);
+""")

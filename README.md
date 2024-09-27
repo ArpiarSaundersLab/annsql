@@ -207,7 +207,7 @@ There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive 
 <br>
 
 ## Accessing and processing 4.4 million cells on a laptop
-To illustrate how AnnSQL can be used to access atlas sized datasets on a local computer, we examine the single nuclei dataset presented in "The molecular cytoarchitecture of the adult mouse brain" by <a href='https://www.nature.com/articles/s41586-023-06818-7' target="_blank">Langlieb et al 2023</a>. First, we opened the <a href='https://docs.braincelldata.org/downloads/index.html' target="_blank">atlas</a> AnnData object in backed mode and created a `asql` database using the `MakeDb` class provided with AnnSQL. Next, we performed some basic querying of the data to return subsets. Our next step was to calculate total counts per gene which we accomplished entirely in SQL; even with the non-optimized schema. Lastly, we calculated highly variable genes in the entire dataset using two SQL queries which: (1) provide a list of all gene names in the X table, then (2) use those gene names to calculate the variance for each gene and return a list of the top 2000. Our results demonstrate AnnSQL is a capable tool for basic (and possibly more advanced) analyses of atlas scale datasets. 
+To illustrate how AnnSQL can be used to access atlas sized datasets on a local computer, we examine the single nuclei dataset presented in "The molecular cytoarchitecture of the adult mouse brain" by <a href='https://www.nature.com/articles/s41586-023-06818-7' target="_blank">Langlieb et al 2023</a>. First, we opened the <a href='https://docs.braincelldata.org/downloads/index.html' target="_blank">atlas</a> AnnData object in backed mode and created a `asql` database using the `MakeDb` class provided with AnnSQL. Next, we performed some basic querying of the data to return subsets. We then calculated total counts per gene which we accomplished entirely in SQL; even with the non-optimized schema. Next, we blended Python and SQL to normalize and log the counts per library. Lastly, we calculated highly variable genes in the entire dataset using two SQL queries which: (1) provide a list of all gene names in the X table, then (2) use those gene names to calculate the variance for each gene and return a list of the top 2000. Our results demonstrate AnnSQL is a capable tool for basic (and possibly more advanced) analyses of atlas scale datasets. 
 
 ```python
 #import libraries
@@ -234,7 +234,7 @@ adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)
 Normalize counts to 1e4 and log
 1. Get all gene column names by using the describe function | Runtime: 0.21sec
 2. Pass those genes into a query in chunks to get total counts | Runtime: 4min 17sec
-3. Normalize to 1e4 and log2 | Runtime: 1hr 2min
+3. Normalize to 1e4 and log2 | Runtime: 1hr 3min
 """
 
 #get all gene names 
