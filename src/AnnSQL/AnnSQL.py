@@ -30,8 +30,6 @@ class AnnSQL:
 		if self.db is not None:
 			if not os.path.exists(self.db):
 				raise ValueError('The db provided doesn\'t exist. Please check the path')
-		if self.db is not None and self.adata is None:
-			warnings.warn('Warning: No adata object provided. return_type="adata" is disabled.')
 
 	def open_anndata(self,adata):
 		if not isinstance(adata, sc.AnnData) and isinstance(adata, str):	
@@ -73,6 +71,9 @@ class AnnSQL:
 		if return_type == 'pandas':
 			return result_df
 		elif return_type == 'adata':
+			if self.db is not None and self.adata is None:
+				print('Warning: No adata object provided. return_type="adata" is disabled.')
+				return result_df
 			return self.adata[result_df["cell_id"]]
 
 	def query_raw(self, query):
@@ -81,14 +82,15 @@ class AnnSQL:
 		self.close_db()
 		return result
 
-	def update_query(self, query):
+	def update_query(self, query, suppress_message=False):
 		if 'SELECT' in query.upper():
 			raise ValueError('SELECT detected. Please use query() instead')
 		try:
 			self.open_db()
 			self.conn.execute(query)
 			self.close_db()
-			print("Query Successful")
+			if suppress_message == False:
+				print("Query Successful")
 		except Exception as e:
 			print("Update Query Error:", e)
 

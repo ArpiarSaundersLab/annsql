@@ -4,6 +4,9 @@ import numpy as np
 import duckdb
 import os 
 import json
+import time
+import warnings
+warnings.filterwarnings('ignore')
 
 class BuildDb:
 	def __init__(self, 
@@ -31,14 +34,33 @@ class BuildDb:
 		var_names_df.columns = ['gene']
 		obs_df.columns = ['cell_id'] + list(obs_df.columns[1:])
 		
+		#The var_names_make_unique appears doesn't handle case sensitively. SQL requires true unique column names
+		var_names_upper = pd.DataFrame(var_names).apply(lambda x: x.str.upper())
+		var_names = list(var_names)
+		start_time = time.time()
+		unique_counter = {}
+		for i in range(len(var_names_upper)):
+			if var_names_upper.duplicated()[i] == True:
+				if var_names_upper.iloc[i][0] in unique_counter:
+					unique_counter[var_names_upper.iloc[i][0] ]+=1
+					var_names[i] = var_names[i] + f"_{unique_counter[var_names_upper.iloc[i][0] ]}"
+				else:
+					unique_counter[var_names_upper.iloc[i][0] ] = 1
+					var_names[i] = var_names[i] + f"_{unique_counter[var_names_upper.iloc[i][0] ]}"
+		end_time = time.time()
+		print("Time to make var_names unique: ", end_time-start_time)
+
 		#Create X with cell_id as varchar and var_names_df columns as float
 		#import to do floating point calculations in future (e.g. normalization)
+		start_time = time.time()
 		self.conn.execute("""
 			CREATE TABLE X (
 				cell_id VARCHAR,
 				{}
 			)
 		""".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
+		end_time = time.time()
+		print("Time to create X table schema: ", end_time-start_time)
 
 		#handle backed mode
 		if self.adata.isbacked:
@@ -48,14 +70,10 @@ class BuildDb:
 				cell_id_df = pd.DataFrame(obs_df['cell_id'][:1]).reset_index(drop=True)
 				X_df = pd.concat([cell_id_df, X_df], axis=1)
 				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
-
-				# self.conn.register('X_df', X_df)
-				# self.conn.execute("CREATE TABLE X AS SELECT * FROM X_df")
-				# self.conn.unregister('X_df')
-
 				chunk_size = 5000 
-				print(f"Starting backed mode db creation. Total rows: {self.adata.shape[0]}")
+				print(f"Starting backed mode data insert. Total rows: {self.adata.shape[0]}")
 				for start in range(1, self.adata.shape[0], chunk_size):
+					start_time = time.time()
 					end = min(start + chunk_size, self.adata.shape[0])
 					X_chunk = self.adata.X[start:end].toarray() if hasattr(self.adata.X[start:end], 'toarray') else self.adata.X[start:end]
 					X_chunk_df = pd.DataFrame(X_chunk, columns=var_names)
@@ -64,7 +82,7 @@ class BuildDb:
 					self.conn.register('X_chunk_df', X_chunk_df)
 					self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df")
 					self.conn.unregister('X_chunk_df')
-					print(f"Inserted chunk {start}-{end}")
+					print(f"Inserted chunk {start}-{end} in {time.time()-start_time} seconds")
 				print(f"Finished inserting data in chunks.")
 			else:
 				print("Skipping X layer")
@@ -72,6 +90,7 @@ class BuildDb:
 		else:
 			#not backed mode
 			if "X" in self.layers:
+				start_time = time.time()
 				X_df = pd.DataFrame(self.adata.X.toarray() if hasattr(self.adata.X, 'toarray') else self.adata.X,
 									columns=var_names)
 				cell_id_df = pd.DataFrame(obs_df['cell_id']).reset_index(drop=True)
@@ -80,11 +99,13 @@ class BuildDb:
 				self.conn.register('X_df', X_df)
 				self.conn.execute("INSERT INTO X SELECT * FROM X_df")
 				self.conn.unregister('X_df')
+				end_time = time.time()
+				print("Time to insert X data: ", end_time-start_time )
 			else:
 				print("Skipping X layer")
 
 
-		#these tables are usually not as large and don't require chunking
+		#these tables are usually not as large and shouldn't require chunking
 		if "obs" in self.layers:
 			self.conn.register('obs_df', obs_df)
 			self.conn.execute("CREATE TABLE obs AS SELECT * FROM obs_df")
@@ -134,7 +155,7 @@ class BuildDb:
 		else:
 			print("Skipping obsp layer")
 
-		#indexes (resource intensive)
+		#indexes (resource intensive. only recommended for small datasets)
 		if self.create_all_indexes == True:
 			if "X" in self.layers:
 				for column in X_df.columns:
@@ -180,7 +201,6 @@ class BuildDb:
 			self.conn.execute("CREATE TABLE uns_raw (key TEXT, value TEXT, data_type TEXT)")
 		except Exception as e:
 			print(f"Error creating uns_raw table: {e}")
-		
 		for key, value in self.adata.uns.items():
 			try:
 				serialized_value = self.make_json_serializable(value)
@@ -198,11 +218,19 @@ class BuildDb:
 				value = value.tolist()
 			else:
 				data_type = 'unknown'
-
 			try:
 				self.conn.execute("INSERT INTO uns_raw VALUES (?, ?, ?)", (key, serialized_value, data_type))
 			except Exception as e:
 				print(f"Error inserting key {key}: {e}")
 
 	def replace_special_chars(self, string):
-		return string.replace("-", "_").replace(".", "_")
+		reserved_words = ['cell_id','CAST','SELECT','UPDATE']
+		if string in reserved_words:
+			string = "r_"+string
+		if string[0].isdigit():
+			return 'n'+string.replace("-", "_").replace(".", "_")
+		else:
+			return string.replace("-", "_").replace(".", "_")
+
+
+
