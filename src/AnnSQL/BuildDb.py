@@ -121,6 +121,9 @@ class BuildDb:
 			print("Skipping var_names layer")
 
 		if "var" in self.layers:
+			var["gene_names_orig"] = var.index
+			var["gene_names"] = [self.replace_special_chars(col) for col in var_names]
+			var = var.reset_index(drop=True)
 			self.conn.register('var_df', var)
 			self.conn.execute("CREATE TABLE var AS SELECT * FROM var_df")
 			self.conn.unregister('var_df')

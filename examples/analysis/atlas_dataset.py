@@ -19,7 +19,7 @@ import pandas as pd
 adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
 
 ###################################################
-# attempt to normalize the data
+# normalize the data
 ###################################################
 #get the gene names
 gene_names = adata_sql.query(f"Describe X")['column_name'][1:].values
@@ -56,33 +56,48 @@ for i in range(0, len(gene_names), chunk_size):
 end_time = time.time()
 print("Normalize & Log2 Time: ", end_time - start_time)
 
-
-
 ###################################################
 #get the top highly variable genes
 ###################################################
+
+
 adata.var.to_dict()
 df = pd.DataFrame(adata.var.to_dict(), columns=["esn_name","gene_name"], index=adata.var_names)
-df["esn_name"] = df["index"]
-df = df.drop(columns=["index"])
+df["esn_name"] = df.index
+df = df.reset_index(drop=True)
 df = df[["gene_name", "esn_name"]]
-df["variance"] = 0
-df
+df["variance"] = 0.0
 
+#modify the var table to include the variance column
 adata_sql.open_db()
 adata_sql.conn.register("df", df)
 adata_sql.conn.execute("DROP TABLE IF EXISTS var")
 adata_sql.conn.execute(f"CREATE TABLE var AS SELECT * FROM df")
 adata_sql.query("SELECT * FROM var")
 
-adata_sql.query(f"SELECT VARIANCE(ENSMUSG00000051951) FROM X;")
-adata_sql.query_raw(f"UPDATE var SET ENSMUSG00000051951 = VARIANCE(SELECT ENSMUSG00000051951 FROM X)")
+#variance for each gene
+start_time = time.time()
+variance_values = []
+chunk_size = 100
+for i in range(0, len(df), chunk_size):
+	chunk = df["esn_name"][i:i+chunk_size]
+	query = f"SELECT {', '.join([f'VARIANCE({gene}) as {gene}' for gene in chunk])} FROM X;"
+	variance_chunk = adata_sql.query(query)
+	variance_values.extend(variance_chunk.values.flatten())
+	print(f"Processed chunk {i // chunk_size + 1} in {time.time() - start_time} seconds")
+end_time = time.time()
+print("Variance Time: ", end_time-start_time)
 
-adata_sql.query_raw(f"""
-    WITH variance_computation AS (
-        SELECT VARIANCE(ENSMUSG00000051951) AS computed_variance
-        FROM X
-    )
-    UPDATE var
-    SET ENSMUSG00000051951 = (SELECT computed_variance FROM variance_computation);
-""")
+#insert these values into the var table matching on the index. Don't chunk and do it all in one query
+variance_df = pd.DataFrame({"variance": variance_values})
+variance_df["esn_name"] = df["esn_name"]
+
+#update the var table with the variance values
+start_time = time.time()
+adata_sql.open_db()
+adata_sql.conn.execute("DROP TABLE IF EXISTS variance_df")
+adata_sql.conn.register("variance_df", variance_df)
+adata_sql.conn.execute(f"CREATE TABLE variance_df AS SELECT * FROM variance_df")
+adata_sql.query("SELECT * FROM variance_df")
+adata_sql.query_raw("UPDATE var SET variance = (SELECT variance FROM variance_df WHERE var.esn_name = variance_df.esn_name)")
+end_time = time.time()

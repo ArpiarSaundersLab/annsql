@@ -20,7 +20,6 @@ class AnnSQL:
 		else:
 			self.open_db()
 
-
 	def validate_params(self):
 		if self.adata is None and self.db is None:
 			raise ValueError('Both adata and db parameters not defined. Select an option')
@@ -37,7 +36,6 @@ class AnnSQL:
 		else:
 			return adata
 			
-
 	def open_db(self):
 		if self.db is not None:
 			self.conn = duckdb.connect(self.db)
@@ -83,7 +81,7 @@ class AnnSQL:
 		return result
 
 	def update_query(self, query, suppress_message=False):
-		if 'SELECT' in query.upper():
+		if 'SELECT' in query.upper() or 'DELETE' in query.upper():
 			raise ValueError('SELECT detected. Please use query() instead')
 		try:
 			self.open_db()
@@ -93,6 +91,18 @@ class AnnSQL:
 				print("Query Successful")
 		except Exception as e:
 			print("Update Query Error:", e)
+
+	def delete_query(self, query, suppress_message=False):
+		if 'SELECT' in query.upper() or 'UPDATE' in query.upper():
+			raise ValueError('SELECT detected. Please use query() instead')
+		try:
+			self.open_db()
+			self.conn.execute(query)
+			self.close_db()
+			if suppress_message == False:
+				print("Delete Query Successful")
+		except Exception as e:
+			print("Delete Query Error:", e)
 
 	def show_tables(self):
 		self.open_db()
@@ -120,3 +130,160 @@ class AnnSQL:
 	
 	def replace_special_chars(self, string):
 		return string.replace("-", "_").replace(".", "_")
+
+	def expression_normalize(self, total_counts_per_cell=1e4, chunk_size=200, print_progress=False):
+		self.check_chunk_size(chunk_size)
+		if 'total_counts' not in self.query("SELECT * FROM X LIMIT 1").columns:
+			print("Total counts not found...")
+			self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
+		
+		print("Expression Normalization Started")
+		gene_names = self.query(f"Describe X")['column_name'][1:].values
+		if 'total_counts' in gene_names:
+			gene_names = gene_names[:-1]
+		for i in range(0, len(gene_names), chunk_size):
+			updates = []
+			chunk = gene_names[i:i + chunk_size]
+			for gene in chunk:
+				if gene == 'total_counts':
+					continue
+				updates.append(f"{gene} = (({gene} / total_counts) * {total_counts_per_cell})")
+			update_query = f"UPDATE X SET {', '.join(updates)}"
+			self.update_query(update_query, suppress_message=True)
+			if print_progress == True:
+				print(f"Processed chunk {i // chunk_size + 1}")
+		print("Expression Normalization Complete")
+
+	def expression_log(self, log_type="LOG2", chunk_size=200, print_progress=False):
+		#log_type can be LOG, LOG2, LOG10
+		self.check_chunk_size(chunk_size)
+		gene_names = self.query(f"Describe X")['column_name'][1:].values
+		if 'total_counts' in gene_names:
+			gene_names = gene_names[:-1]
+		
+		print("Log Transform Started")
+		for i in range(0, len(gene_names), chunk_size):
+			updates = []
+			chunk = gene_names[i:i + chunk_size]
+			for gene in chunk:
+				if gene == 'total_counts':
+					continue
+				updates.append(f"{gene} = {log_type}({gene}+1e-5)")
+			update_query = f"UPDATE X SET {', '.join(updates)}"
+			self.update_query(update_query, suppress_message=True)
+			if print_progress == True:
+				print(f"Processed chunk {i // chunk_size + 1}")
+		print("Log Transform Complete")
+
+	
+	def calculate_total_counts(self, chunk_size=250, print_progress=False):
+		self.check_chunk_size(chunk_size)
+		gene_names = self.query(f"Describe X")['column_name'][1:].values
+		
+		if "total_counts" in gene_names:
+			self.update_query(f"UPDATE X SET total_counts = 0;")
+			gene_names = gene_names[:-1] 
+		else:
+			self.query(f"ALTER TABLE X ADD COLUMN total_counts FLOAT DEFAULT 0;")
+		
+		print("Total Counts Calculation Started")
+		for i in range(0, len(gene_names), chunk_size):
+			chunk = gene_names[i:i+chunk_size]
+			chunk = " + ".join(chunk) + " + total_counts"
+			self.update_query(f"UPDATE X SET total_counts = ({chunk});", suppress_message=True)
+			if print_progress == True:
+				print(f"Processed chunk {i // chunk_size + 1}")
+
+		#set obs total_counts
+		#if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+		self.query_raw("ALTER TABLE obs ADD COLUMN total_counts FLOAT DEFAULT 0;")
+		self.query_raw("UPDATE obs SET total_counts = (SELECT total_counts FROM X WHERE obs.cell_id = X.cell_id)")
+		print("Total Counts Calculation Complete")
+
+	def calculate_gene_counts(self, chunk_size=200, print_progress=False):
+		self.check_chunk_size(chunk_size)
+		gene_names_df = self.query(f"SELECT gene_names FROM var")
+		gene_names_df["gene_counts"] = 0.0		
+		gene_names_df = gene_names_df.reset_index(drop=True)
+		
+		var_table = self.query("SELECT * FROM var LIMIT 1")
+		if var_table.shape[0] == 0:
+			print("Creating Var Table")
+			self.open_db()
+			self.conn.register("gene_names_df", gene_names_df)
+			self.conn.execute(f"CREATE TABLE var AS SELECT * FROM gene_names_df")
+		else:
+			print("Updating Var Table")
+			self.update_query("ALTER TABLE var DROP COLUMN gene_counts;", suppress_message=True)
+			self.update_query("ALTER TABLE var ADD COLUMN gene_counts FLOAT DEFAULT 0;", suppress_message=True)
+			self.update_query("UPDATE var SET gene_counts = 0.0;", suppress_message=True)
+
+		print("Gene Counts Calculation Started")
+		gene_counts = []
+		for i in range(0, len(gene_names_df), chunk_size):
+			chunk = gene_names_df["gene_names"][i:i+chunk_size]
+			query = f"SELECT {', '.join([f'SUM({gene}) as {gene}' for gene in chunk])} FROM X;"
+			counts_chunk = self.query(query)
+			gene_counts.extend(counts_chunk.values.flatten())
+			if print_progress == True:
+				print(f"Processed chunk {i // chunk_size + 1}")
+
+		#insert these values into the var table matching on the index.
+		gene_counts_df = pd.DataFrame({"gene_counts": gene_counts})
+		gene_counts_df["gene_names"] = gene_names_df["gene_names"]
+
+		#update the var table with the gene_counts values
+		self.open_db()
+		self.conn.execute("DROP TABLE IF EXISTS gene_counts_df")
+		self.conn.register("gene_counts_df", gene_counts_df)
+		self.conn.execute(f"CREATE TABLE gene_counts_df AS SELECT * FROM gene_counts_df")
+		self.conn.execute("UPDATE var SET gene_counts = (SELECT gene_counts FROM gene_counts_df WHERE var.gene_names = gene_counts_df.gene_names)")
+		self.conn.execute("DROP VIEW IF EXISTS gene_counts_df")
+		print("Gene Counts Calculation Complete")
+
+	def calculate_variable_genes(self, chunk_size=100, print_progress=False):
+		self.check_chunk_size(chunk_size)
+		gene_names_df = self.query(f"SELECT gene_names FROM var")
+		gene_names_df["variance"] = 0.0		
+		gene_names_df = gene_names_df.reset_index(drop=True)
+		
+		var_table = self.query("SELECT * FROM var LIMIT 1")
+		if var_table.shape[0] == 0:
+			print("Creating Var Table")
+			self.open_db()
+			self.conn.register("gene_names_df", gene_names_df)
+			self.conn.execute(f"CREATE TABLE var AS SELECT * FROM gene_names_df")
+		else:
+			print("Updating Var Table")
+			self.update_query("ALTER TABLE var DROP COLUMN variance;", suppress_message=True)
+			self.update_query("ALTER TABLE var ADD COLUMN variance FLOAT DEFAULT 0;", suppress_message=True)
+			self.update_query("UPDATE var SET variance = 0.0;", suppress_message=True)
+
+		variance_values = []
+		for i in range(0, len(gene_names_df), chunk_size):
+			chunk = gene_names_df["gene_names"][i:i+chunk_size]
+			query = f"SELECT {', '.join([f'VARIANCE({gene}) as {gene}' for gene in chunk])} FROM X;"
+			variance_chunk = self.query(query)
+			variance_values.extend(variance_chunk.values.flatten())
+			if print_progress == True:
+				print(f"Processed chunk {i // chunk_size + 1}")
+
+		#insert these values into the var table matching on the index.
+		variance_df = pd.DataFrame({"variance": variance_values})
+		variance_df["gene_names"] = gene_names_df["gene_names"]
+
+		#update the var table with the variance values
+		self.open_db()
+		self.conn.execute("DROP TABLE IF EXISTS variance_df")
+		self.conn.register("variance_df", variance_df)
+		self.conn.execute(f"CREATE TABLE variance_df AS SELECT * FROM variance_df")
+		self.conn.execute("UPDATE var SET variance = (SELECT variance FROM variance_df WHERE var.gene_names = variance_df.gene_names)")
+		self.conn.execute("DROP VIEW IF EXISTS variance_df")
+		print("Variance Calculation Complete")
+
+
+
+
+	def check_chunk_size(self, chunk_size):
+		if chunk_size > 999:
+			raise ValueError('chunk_size must be less than 1000. DuckDb limitation')
