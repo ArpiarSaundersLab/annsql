@@ -195,7 +195,6 @@ class AnnSQL:
 				print(f"Processed chunk {i // chunk_size + 1}")
 
 		#set obs total_counts
-		#if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
 		self.query_raw("ALTER TABLE obs ADD COLUMN total_counts FLOAT DEFAULT 0;")
 		self.query_raw("UPDATE obs SET total_counts = (SELECT total_counts FROM X WHERE obs.cell_id = X.cell_id)")
 		print("Total Counts Calculation Complete")

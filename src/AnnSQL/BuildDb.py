@@ -82,7 +82,7 @@ class BuildDb:
 					self.conn.register('X_chunk_df', X_chunk_df)
 					self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df")
 					self.conn.unregister('X_chunk_df')
-					print(f"Inserted chunk {start}-{end} in {time.time()-start_time} seconds")
+					print(f"Inserted row chunk {start}-{end-1} in {time.time()-start_time} seconds")
 				print(f"Finished inserting data in chunks.")
 			else:
 				print("Skipping X layer")

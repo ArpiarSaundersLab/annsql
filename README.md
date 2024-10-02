@@ -158,6 +158,50 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
       <td><li>None</li></td>
       <td>Exports all tables in the DuckDB database to individual Parquet files, saved in the <code>parquet_files</code> folder.</td>
     </tr>
+    <tr>
+      <td><code>calculate_total_counts(chunk_size, print_progress)</code></td>
+      <td>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Calculates total library size for each cell. Adds the column 'total_counts' directly to the `obs` and `X` table for convience.</td>
+    </tr>
+    <tr>
+      <td><code>expression_normalize(total_counts_per_cell, chunk_size, print_progress)</code></td>
+      <td>
+	   	  <li><code>total_counts_per_cell</code>: Integer (optional. default: 1e4)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Updates the cell UMI counts to proportionally add to the total_counts_per_cell value. Directly updates the `X` table.</td>
+    </tr>
+    <tr>
+      <td><code>expression_log(log_type, chunk_size, print_progress)</code></td>
+      <td>
+	   	  <li><code>log_type</code>: Accepts either LOG2 or LOG10. String (optional. default: LOG2)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Log transforms the expression and directly updates the `X` table.</td>
+    </tr>
+    <tr>
+      <td><code>calculate_gene_counts(chunk_size, print_progress)</code></td>
+      <td>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Sums all genes (columns) in the `X` table and adds the results to the column, 'gene_counts' in the `var` table.</td>
+    </tr>
+    <tr>
+      <td><code>calculate_variable_genes(chunk_size, print_progress)</code></td>
+      <td>
+	      <li><font color="orange"><b>Experimental</b></font></li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Takes the sample variance of each gene in the `X` table and adds the results to the 'variance' column in the `var` table. Includes Bessel's bias correction.</td>
+    </tr>
+
   </tbody>
 </table>
 
@@ -196,13 +240,6 @@ There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive 
 
 <img src="examples/images/comparision.png">
 
-#### Runtime System Details
-- **Memory:**                                      40.0 GiB
-- **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
-- **Disk Capacity:**                               1.0 TB
-- **OS:**                                          Ubuntu 24.04.1 LTS
-- **Python Version:**                              3.12
-
 <br>
 <br>
 
@@ -220,59 +257,24 @@ adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed
 #build the asql database | Runtime 7hr 10min
 MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"])
 
-#query example (GAD1 = ENSMUSG00000070880) | Runtime: 0.24sec
+#query example | Runtime: 0.24sec
 adata_sql.query("SELECT ENSMUSG00000070880 FROM X WHERE ENSMUSG00000070880 > 0")
 
 #count the number of cells in each cluster | Runtime: 0.35sec
 adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
 
-#total counts per gene | Runtime: 2min 36sec
-adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)") 
+#determine the total counts per cell library | Runtime: 4min 30sec
+adata_sql.calculate_total_counts(chunk_size=950)
 
+#normalize umi counts to 10k per cell | Runtime: 
+adata_sql.expression_normalize(total_counts_per_cell=1e4, chunk_size=300) 
 
-"""
-Normalize counts to 1e4 and log
-1. Get all gene column names by using the describe function | Runtime: 0.21sec
-2. Pass those genes into a query in chunks to get total counts | Runtime: 4min 17sec
-3. Normalize to 1e4 and log2 | Runtime: 1hr 3min
-"""
-
-#get all gene names 
-gene_names = adata_sql.query(f"Describe X")['column_name'][1:].values
-
-#add a total counts column
-adata_sql.query(f"ALTER TABLE X ADD COLUMN total_counts FLOAT DEFAULT 0;")
-
-#iterates gene_names in chunks
-chunk_size = 990 #Ddb limited to 1k
-for i in range(0, len(gene_names), chunk_size):
-	chunk = gene_names[i:i+chunk_size]
-	chunk = " + ".join(chunk) + " + total_counts"
-	adata_sql.update_query(f"UPDATE X SET total_counts = ({chunk});")
-
-#normalize to 10k and log2
-chunk_size = 200  #reduces db memory usage
-for i in range(0, len(gene_names), chunk_size):
-	updates = []
-	chunk = gene_names[i:i + chunk_size]
-	for gene in chunk:
-		updates.append(f"{gene} = LOG2(({gene} / total_counts) * 1e4 + 1e-5)")
-	update_query = f"UPDATE X SET {', '.join(updates)}"
-	adata_sql.update_query(update_query)
-
-
-
-"""
-Calculate top 2000 highly variable genes.
-1. Get all gene column names by using the describe function | Runtime: 0.21sec
-2. Pass those genes to query using built-in variance function. Then,
-   order the results and limit to the top 2000 | Runtime: 0.21sec
-"""
-
+#log scale the normalized counts | Runtime
+adata_sql.expression_log(log_type="LOG2", chunk_size=950)
 
 ```
 
-#### Runtime System Details
+## Laptop system details for runtime analyses displayed above.
 - **Memory:**                                      40.0 GiB
 - **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
 - **Disk Capacity:**                               1.0 TB

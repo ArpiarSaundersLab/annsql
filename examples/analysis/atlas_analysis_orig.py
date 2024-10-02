@@ -5,7 +5,6 @@ from AnnSQL import AnnSQL
 import time
 import pandas as pd
 
-# #same as above, but using scanpy's read function
 #adata = sc.read_h5ad("/home/kenny/Documents/OHSU/Projects/TAP/data/celltypist_models/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r")
 
 # #build a database to query later
@@ -15,7 +14,7 @@ import pandas as pd
 # 		create_basic_indexes=True,
 # 		layers=["X", "obs","var"])
 
-#call the AnnSQL class
+#call the AnnSQL classend
 adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
 
 ###################################################

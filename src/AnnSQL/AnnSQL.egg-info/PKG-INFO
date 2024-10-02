@@ -240,49 +240,17 @@ adata_sql.query("SELECT ENSMUSG00000070880 FROM X WHERE ENSMUSG00000070880 > 0")
 #count the number of cells in each cluster | Runtime: 0.35sec
 adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
 
-#total counts per gene | Runtime: 2min 36sec
-adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)") 
+#total counts per gene | Runtime: 4min 30sec (270.23 sec)
+adata_sql.calculate_gene_counts(chunk_size=950)
 
+#determine the total counts per cell library | Runtime: 2min 36sec
+adata_sql.calculate_total_counts(chunk_size=950)
 
-"""
-Normalize counts to 1e4 and log
-1. Get all gene column names by using the describe function | Runtime: 0.21sec
-2. Pass those genes into a query in chunks to get total counts | Runtime: 4min 17sec
-3. Normalize to 1e4 and log2 | Runtime: 1hr 3min
-"""
+#normalize umi counts to 10k per cell | Runtime: 
+adata_sql.expression_normalize(total_counts_per_cell=1e4, chunk_size=950) 
 
-#get all gene names 
-gene_names = adata_sql.query(f"Describe X")['column_name'][1:].values
-
-#add a total counts column
-adata_sql.query(f"ALTER TABLE X ADD COLUMN total_counts FLOAT DEFAULT 0;")
-
-#iterates gene_names in chunks
-chunk_size = 990 #Ddb limited to 1k
-for i in range(0, len(gene_names), chunk_size):
-	chunk = gene_names[i:i+chunk_size]
-	chunk = " + ".join(chunk) + " + total_counts"
-	adata_sql.update_query(f"UPDATE X SET total_counts = ({chunk});")
-
-#normalize to 10k and log2
-chunk_size = 200  #reduces db memory usage
-for i in range(0, len(gene_names), chunk_size):
-	updates = []
-	chunk = gene_names[i:i + chunk_size]
-	for gene in chunk:
-		updates.append(f"{gene} = LOG2(({gene} / total_counts) * 1e4 + 1e-5)")
-	update_query = f"UPDATE X SET {', '.join(updates)}"
-	adata_sql.update_query(update_query)
-
-
-
-"""
-Calculate top 2000 highly variable genes.
-1. Get all gene column names by using the describe function | Runtime: 0.21sec
-2. Pass those genes to query using built-in variance function. Then,
-   order the results and limit to the top 2000 | Runtime: 0.21sec
-"""
-
+#log scale the normalized counts | Runtime
+adata_sql.expression_log(log_type="LOG2", chunk_size=950)
 
 ```
 
