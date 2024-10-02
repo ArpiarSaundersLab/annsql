@@ -9,7 +9,7 @@ To get started, see the usage notes below or refer to the example scripts in the
 ## Features
 - Query AnnData with **SQL**.
 - Return query results as **Pandas** Dataframes, **Parquet** files, or **AnnData** objects.
-- Create in-memory or on-Disk databases directly from AnnData objects.
+- Create in-memory or on-disk databases directly from AnnData objects.
 - **Fast** for complex queries and aggregative functions.
 
 ## Installation
@@ -266,11 +266,11 @@ adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY
 #determine the total counts per cell library | Runtime: 4min 30sec
 adata_sql.calculate_total_counts(chunk_size=950)
 
-#normalize umi counts to 10k per cell | Runtime: 
+#normalize umi counts to 10k per cell | Runtime: 1hr 48mins
 adata_sql.expression_normalize(total_counts_per_cell=1e4, chunk_size=300) 
 
-#log scale the normalized counts | Runtime
-adata_sql.expression_log(log_type="LOG2", chunk_size=950)
+#log scale the normalized counts | Runtime: 59mins 13sec
+adata_sql.expression_log(log_type="LOG2", chunk_size=250)
 
 ```
 

@@ -32,11 +32,9 @@ start_time = time.time()
 adata_sql.expression_normalize(chunk_size=300, print_progress=True) 
 print("--- %s seconds expression_normalize---" % (time.time() - start_time))
 
-
-
 #calculate the log2 expression
 start_time = time.time()
-adata_sql.expression_log(log_type="LOG2", chunk_size=950)
+adata_sql.expression_log(log_type="LOG2", chunk_size=250, print_progress=True)
 print("--- %s seconds expression_log---" % (time.time() - start_time))
 
 #calculates gene variance (Experimental: sample variance per gene, includes Bessel's bias correction)
