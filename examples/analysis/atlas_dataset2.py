@@ -16,6 +16,8 @@ import time
 
 #open the database
 adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas.asql")
+adata_sql.query("SELECT LN(ENSMUSG00000051951) FROM X LIMIT 1")
+
 
 #calculate total counts
 start_time = time.time()

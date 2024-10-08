@@ -178,7 +178,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
     <tr>
       <td><code>expression_log(log_type, chunk_size, print_progress)</code></td>
       <td>
-	   	  <li><code>log_type</code>: Accepts either LOG2 or LOG10. String (optional. default: LOG2)</li>
+	   	  <li><code>log_type</code>: Accepts either LN, LOG2 or LOG10. String (optional. default: LN)</li>
           <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
           <li><code>print_progress</code>: Boolean (optional. default: False)</li>
       </td>

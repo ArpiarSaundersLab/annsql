@@ -154,8 +154,8 @@ class AnnSQL:
 				print(f"Processed chunk {i // chunk_size + 1}")
 		print("Expression Normalization Complete")
 
-	def expression_log(self, log_type="LOG2", chunk_size=200, print_progress=False):
-		#log_type can be LOG, LOG2, LOG10
+	def expression_log(self, log_type="LN", chunk_size=200, print_progress=False):
+		#log_type can be LN, LOG, LOG2, LOG10
 		self.check_chunk_size(chunk_size)
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
 		if 'total_counts' in gene_names:
