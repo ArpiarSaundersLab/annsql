@@ -9,7 +9,7 @@ import pandas as pd
 
 # #build a database to query later
 #MakeDb(adata=adata, 
-# 		db_name="Macosko_Mouse_Atlas_4mil", 
+# 		db_name="Macosko_Mouse_Atlas_test", 
 # 		db_path="../db/", 
 # 		create_basic_indexes=True,
 # 		layers=["X", "obs","var"])

@@ -23,7 +23,7 @@ To get started, see the usage notes below or refer to the example scripts in the
 ## Features
 - Query AnnData with **SQL**.
 - Return query results as **Pandas** Dataframes, **Parquet** files, or **AnnData** objects.
-- Create in-memory or on-Disk databases directly from AnnData objects.
+- Create in-memory or on-disk databases directly from AnnData objects.
 - **Fast** for complex queries and aggregative functions.
 
 ## Installation
@@ -172,6 +172,50 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
       <td><li>None</li></td>
       <td>Exports all tables in the DuckDB database to individual Parquet files, saved in the <code>parquet_files</code> folder.</td>
     </tr>
+    <tr>
+      <td><code>calculate_total_counts(chunk_size, print_progress)</code></td>
+      <td>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Calculates total library size for each cell. Adds the column 'total_counts' directly to the `obs` and `X` table for convience.</td>
+    </tr>
+    <tr>
+      <td><code>expression_normalize(total_counts_per_cell, chunk_size, print_progress)</code></td>
+      <td>
+	   	  <li><code>total_counts_per_cell</code>: Integer (optional. default: 1e4)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Updates the cell UMI counts to proportionally add to the total_counts_per_cell value. Directly updates the `X` table.</td>
+    </tr>
+    <tr>
+      <td><code>expression_log(log_type, chunk_size, print_progress)</code></td>
+      <td>
+	   	  <li><code>log_type</code>: Accepts either LN, LOG2 or LOG10. String (optional. default: LN)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Log transforms the expression and directly updates the `X` table.</td>
+    </tr>
+    <tr>
+      <td><code>calculate_gene_counts(chunk_size, print_progress)</code></td>
+      <td>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Sums all genes (columns) in the `X` table and adds the results to the column, 'gene_counts' in the `var` table.</td>
+    </tr>
+    <tr>
+      <td><code>calculate_variable_genes(chunk_size, print_progress)</code></td>
+      <td>
+	      <li><font color="orange"><b>Experimental</b></font></li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+      </td>
+      <td>Takes the sample variance of each gene in the `X` table and adds the results to the 'variance' column in the `var` table. Includes Bessel's bias correction.</td>
+    </tr>
+
   </tbody>
 </table>
 
@@ -210,13 +254,6 @@ There are two key reasons to use **AnnSQL**: (1) if you prefer SQL's expressive 
 
 <img src="examples/images/comparision.png">
 
-#### Runtime System Details
-- **Memory:**                                      40.0 GiB
-- **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
-- **Disk Capacity:**                               1.0 TB
-- **OS:**                                          Ubuntu 24.04.1 LTS
-- **Python Version:**                              3.12
-
 <br>
 <br>
 
@@ -234,27 +271,24 @@ adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed
 #build the asql database | Runtime 7hr 10min
 MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"])
 
-#query example (GAD1 = ENSMUSG00000070880) | Runtime: 0.24sec
+#query example | Runtime: 0.24sec
 adata_sql.query("SELECT ENSMUSG00000070880 FROM X WHERE ENSMUSG00000070880 > 0")
 
 #count the number of cells in each cluster | Runtime: 0.35sec
 adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
 
-#total counts per gene | Runtime: 4min 30sec (270.23 sec)
-adata_sql.calculate_gene_counts(chunk_size=950)
-
-#determine the total counts per cell library | Runtime: 2min 36sec
+#determine the total counts per cell library | Runtime: 4min 30sec
 adata_sql.calculate_total_counts(chunk_size=950)
 
-#normalize umi counts to 10k per cell | Runtime: 
-adata_sql.expression_normalize(total_counts_per_cell=1e4, chunk_size=950) 
+#normalize umi counts to 10k per cell | Runtime: 1hr 48mins
+adata_sql.expression_normalize(total_counts_per_cell=1e4, chunk_size=300) 
 
-#log scale the normalized counts | Runtime
-adata_sql.expression_log(log_type="LOG2", chunk_size=950)
+#log scale the normalized counts | Runtime: 59mins 13sec
+adata_sql.expression_log(log_type="LOG2", chunk_size=250)
 
 ```
 
-#### Runtime System Details
+## Laptop system details for runtime analyses displayed above.
 - **Memory:**                                      40.0 GiB
 - **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
 - **Disk Capacity:**                               1.0 TB

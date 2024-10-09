@@ -72,7 +72,7 @@ class BuildDb:
 				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
 				chunk_size = 5000 
 				print(f"Starting backed mode data insert. Total rows: {self.adata.shape[0]}")
-				for start in range(1, self.adata.shape[0], chunk_size):
+				for start in range(0, self.adata.shape[0], chunk_size):
 					start_time = time.time()
 					end = min(start + chunk_size, self.adata.shape[0])
 					X_chunk = self.adata.X[start:end].toarray() if hasattr(self.adata.X[start:end], 'toarray') else self.adata.X[start:end]
@@ -122,7 +122,12 @@ class BuildDb:
 
 		if "var" in self.layers:
 			var["gene_names_orig"] = var.index
-			var["gene_names"] = [self.replace_special_chars(col) for col in var_names]
+			#var["gene_names"] = [self.replace_special_chars(col) for col in var_names]
+			if 'gene_name' in var.columns:
+				var["gene_names"] =  [col for col in var.gene_name]
+			else:
+				var["gene_names"] = [self.replace_special_chars(col) for col in var_names]
+
 			var = var.reset_index(drop=True)
 			self.conn.register('var_df', var)
 			self.conn.execute("CREATE TABLE var AS SELECT * FROM var_df")
