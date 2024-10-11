@@ -197,7 +197,8 @@ class AnnSQL:
 				print(f"Processed chunk {i // chunk_size + 1}")
 
 		#set obs total_counts
-		self.query_raw("ALTER TABLE obs ADD COLUMN total_counts FLOAT DEFAULT 0;")
+		if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+			self.query_raw("ALTER TABLE obs ADD COLUMN total_counts FLOAT DEFAULT 0;")
 		self.query_raw("UPDATE obs SET total_counts = (SELECT total_counts FROM X WHERE obs.cell_id = X.cell_id)")
 		print("Total Counts Calculation Complete")
 
@@ -256,9 +257,10 @@ class AnnSQL:
 			self.conn.execute(f"CREATE TABLE var AS SELECT * FROM gene_names_df")
 		else:
 			print("Updating Var Table")
-			self.update_query("ALTER TABLE var DROP COLUMN variance;", suppress_message=True)
-			self.update_query("ALTER TABLE var ADD COLUMN variance FLOAT DEFAULT 0;", suppress_message=True)
-			self.update_query("UPDATE var SET variance = 0.0;", suppress_message=True)
+			if "variance" not in var_table.columns:
+				self.update_query("ALTER TABLE var ADD COLUMN variance FLOAT DEFAULT 0;", suppress_message=True)
+			else:
+				self.update_query("UPDATE var SET variance = 0.0;", suppress_message=True)	
 
 		variance_values = []
 		for i in range(0, len(gene_names_df), chunk_size):
