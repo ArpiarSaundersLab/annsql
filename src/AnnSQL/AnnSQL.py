@@ -168,9 +168,9 @@ class AnnSQL:
 			for gene in chunk:
 				if gene == 'total_counts':
 					continue
-				#updates.append(f"{gene} = {log_type}({gene}+1e-5)")
+				updates.append(f"{gene} = {log_type}({gene}+1)")
 				#handle zero values
-				updates.append(f"{gene} = CASE WHEN {gene} = 0 OR {gene} = 0.0 THEN 0.0 ELSE {log_type}({gene}) END")
+				#updates.append(f"{gene} = CASE WHEN {gene} = 0 OR {gene} = 0.0 THEN 0.0 ELSE {log_type}({gene}) END")
 			update_query = f"UPDATE X SET {', '.join(updates)}"
 			self.update_query(update_query, suppress_message=True)
 			if print_progress == True:
@@ -202,9 +202,9 @@ class AnnSQL:
 		self.query_raw("UPDATE obs SET total_counts = (SELECT total_counts FROM X WHERE obs.cell_id = X.cell_id)")
 		print("Total Counts Calculation Complete")
 
-	def calculate_gene_counts(self, chunk_size=200, print_progress=False):
+	def calculate_gene_counts(self, chunk_size=200, print_progress=False, gene_field="gene_names"):
 		self.check_chunk_size(chunk_size)
-		gene_names_df = self.query(f"SELECT gene_names FROM var")
+		gene_names_df = self.query(f"SELECT {gene_field} FROM var")
 		gene_names_df["gene_counts"] = 0.0		
 		gene_names_df = gene_names_df.reset_index(drop=True)
 		
@@ -216,14 +216,15 @@ class AnnSQL:
 			self.conn.execute(f"CREATE TABLE var AS SELECT * FROM gene_names_df")
 		else:
 			print("Updating Var Table")
-			self.update_query("ALTER TABLE var DROP COLUMN gene_counts;", suppress_message=True)
-			self.update_query("ALTER TABLE var ADD COLUMN gene_counts FLOAT DEFAULT 0;", suppress_message=True)
-			self.update_query("UPDATE var SET gene_counts = 0.0;", suppress_message=True)
+			if "gene_counts" not in var_table.columns:
+				self.update_query("ALTER TABLE var ADD COLUMN gene_counts FLOAT DEFAULT 0;", suppress_message=True)
+			else:
+				self.update_query("UPDATE var SET gene_counts = 0.0;", suppress_message=True)	
 
 		print("Gene Counts Calculation Started")
 		gene_counts = []
 		for i in range(0, len(gene_names_df), chunk_size):
-			chunk = gene_names_df["gene_names"][i:i+chunk_size]
+			chunk = gene_names_df[gene_field][i:i+chunk_size]
 			query = f"SELECT {', '.join([f'SUM({gene}) as {gene}' for gene in chunk])} FROM X;"
 			counts_chunk = self.query(query)
 			gene_counts.extend(counts_chunk.values.flatten())
@@ -232,14 +233,14 @@ class AnnSQL:
 
 		#insert these values into the var table matching on the index.
 		gene_counts_df = pd.DataFrame({"gene_counts": gene_counts})
-		gene_counts_df["gene_names"] = gene_names_df["gene_names"]
+		gene_counts_df[gene_field] = gene_names_df[gene_field]
 
 		#update the var table with the gene_counts values
 		self.open_db()
 		self.conn.execute("DROP TABLE IF EXISTS gene_counts_df")
 		self.conn.register("gene_counts_df", gene_counts_df)
 		self.conn.execute(f"CREATE TABLE gene_counts_df AS SELECT * FROM gene_counts_df")
-		self.conn.execute("UPDATE var SET gene_counts = (SELECT gene_counts FROM gene_counts_df WHERE var.gene_names = gene_counts_df.gene_names)")
+		self.conn.execute(f"UPDATE var SET gene_counts = (SELECT gene_counts FROM gene_counts_df WHERE var.{gene_field} = gene_counts_df.{gene_field})")
 		self.conn.execute("DROP VIEW IF EXISTS gene_counts_df")
 		print("Gene Counts Calculation Complete")
 
