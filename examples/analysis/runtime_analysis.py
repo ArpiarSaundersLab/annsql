@@ -343,7 +343,6 @@ comparisons.to_csv("../results/comparisons.csv", index=False)
 comparisons = pd.read_csv("../results/comparisons.csv")
 
 
-
 #plot aggregation of all filters runtime
 sns.set(style="whitegrid")
 sns.lineplot(data=comparisons, x='size', y='runtime_log', hue='type')
@@ -356,3 +355,7 @@ plt.legend(loc='upper right', bbox_to_anchor=(1.45, 1), ncol=1)
 plt.xlim(0, 250000)
 plt.yticks(np.log([0.01,0.1, 1, 10, 100, 1000]), [0.01,0.1, 1, 10, 100, 1000])
 plt.show()
+
+
+#mean runtime for each type with a 250,000 cell library 
+comparisons[comparisons['size'] == 250000].groupby('type')['runtime'].mean()

@@ -256,6 +256,7 @@ class AnnSQL:
 			self.open_db()
 			self.conn.register("gene_names_df", gene_names_df)
 			self.conn.execute(f"CREATE TABLE var AS SELECT * FROM gene_names_df")
+			self.update_query("ALTER TABLE var ADD COLUMN variance FLOAT DEFAULT 0;", suppress_message=True)
 		else:
 			print("Updating Var Table")
 			if "variance" not in var_table.columns:
