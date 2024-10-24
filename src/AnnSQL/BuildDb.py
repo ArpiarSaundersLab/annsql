@@ -53,12 +53,7 @@ class BuildDb:
 		#Create X with cell_id as varchar and var_names_df columns as float
 		#import to do floating point calculations in future (e.g. normalization)
 		start_time = time.time()
-		self.conn.execute("""
-			CREATE TABLE X (
-				cell_id VARCHAR,
-				{}
-			)
-		""".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
+		self.conn.execute("CREATE TABLE X (cell_id VARCHAR,	{} )".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
 		end_time = time.time()
 		print("Time to create X table schema: ", end_time-start_time)
 
@@ -238,7 +233,7 @@ class BuildDb:
 		if string[0].isdigit():
 			return 'n'+string.replace("-", "_").replace(".", "_")
 		else:
-			return string.replace("-", "_").replace(".", "_")
+			return string.replace("-", "_").replace(".", "_").replace("(", "_").replace(")", "_").replace(",", "_")
 
 
 
