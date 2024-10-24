@@ -4,7 +4,7 @@ from AnnSQL import AnnSQL
 import time
 
 #load the atlas dataset (4.4 million cells)
-#adata = sc.read_h5ad("/home/kenny/Documents/OHSU/Projects/TAP/data/celltypist_models/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed_test.h5ad", backed="r+")
+adata = sc.read_h5ad("/home/kenny/Documents/OHSU/Projects/TAP/data/celltypist_models/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed_test.h5ad", backed="r")
 
 # #filter gene expressed > 0
 # start_time = time.time()

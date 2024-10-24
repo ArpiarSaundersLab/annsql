@@ -342,20 +342,89 @@ comparisons.to_csv("../results/comparisons.csv", index=False)
 #load the data
 comparisons = pd.read_csv("../results/comparisons.csv")
 
+#set the colors of the plots (ansql1, anndata in-mem, ansql2, anndata backed)
+colors = ["#07b88e", "#a4a6a4", "#07b88e", "#a4a6a4"]
 
 #plot aggregation of all filters runtime
 sns.set(style="whitegrid")
-sns.lineplot(data=comparisons, x='size', y='runtime_log', hue='type')
-plt.ylabel("Runtime Seconds")
-plt.xlabel("\nCell Library Count")
-plt.xticks(rotation=90)
+plt.figure(dpi=1200)
+sns.lineplot(data=comparisons, x='size', y='runtime_log', hue='type', palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.xticks(rotation=45)
 plt.xticks(np.arange(0, 275000, 25000))
-plt.title("Runtime of AnnSQL vs AnnData\n\nALL (6) FILTERS/QUERIES Runtime Range\n")
-plt.legend(loc='upper right', bbox_to_anchor=(1.45, 1), ncol=1)
 plt.xlim(0, 250000)
 plt.yticks(np.log([0.01,0.1, 1, 10, 100, 1000]), [0.01,0.1, 1, 10, 100, 1000])
+plt.xticks(fontsize=20, fontweight='bold')
+plt.yticks(fontsize=20, fontweight='bold')	
+plt.grid(False)
+plt.legend().remove()
 plt.show()
-
 
 #mean runtime for each type with a 250,000 cell library 
 comparisons[comparisons['size'] == 250000].groupby('type')['runtime'].mean()
+
+#comparision 1
+plt.figure(dpi=950)
+sns.lineplot(data=comparisons[comparisons['filter'] == 'Filter1'], x='size', y='runtime_log', hue='type',linewidth=4, palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.yticks(np.log([0.01,0.1, 1, 10,100]), [0.01,0.1, 1, 10,100])
+plt.xticks(rotation=45)
+plt.legend().remove()
+plt.grid(False)
+plt.xticks([])
+
+#comparision 2
+plt.figure(dpi=950)
+sns.lineplot(data=comparisons[comparisons['filter'] == 'Filter2'], x='size', y='runtime_log', hue='type',linewidth=4, palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.yticks(np.log([0.01,0.1, 1, 10,100]), [0.01,0.1, 1, 10,100])
+plt.xticks(rotation=45)
+plt.legend().remove()
+plt.grid(False)
+plt.xticks([])
+
+#comparision 3
+plt.figure(dpi=950)
+sns.lineplot(data=comparisons[comparisons['filter'] == 'Filter3'], x='size', y='runtime_log', hue='type',linewidth=4, palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.yticks(np.log([0.01,0.1, 1, 10,100]), [0.01,0.1, 1, 10,100])
+plt.xticks(rotation=45)
+plt.legend().remove()
+plt.grid(False)
+plt.xticks([])
+
+#comparision 4
+plt.figure(dpi=950)
+sns.lineplot(data=comparisons[comparisons['filter'] == 'Filter4'], x='size', y='runtime_log', hue='type',linewidth=4, palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.yticks(np.log([0.01,0.1, 1, 10,100]), [0.01,0.1, 1, 10,100])
+plt.xticks(rotation=45)
+plt.legend().remove()
+plt.grid(False)
+plt.xticks([])
+
+#comparision 5
+plt.figure(dpi=950)
+sns.lineplot(data=comparisons[comparisons['filter'] == 'Filter5'], x='size', y='runtime_log', hue='type',linewidth=4, palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.yticks(np.log([0.01,0.1, 1, 10,100]), [0.01,0.1, 1, 10,100])
+plt.xticks(rotation=45)
+plt.legend().remove()
+plt.grid(False)
+plt.xticks([])
+
+#comparision 6
+plt.figure(dpi=950)
+sns.lineplot(data=comparisons[comparisons['filter'] == 'Filter6'], x='size', y='runtime_log', hue='type',linewidth=4, palette=colors)
+plt.ylabel("")
+plt.xlabel("")
+plt.yticks(np.log([0.01,0.1, 1, 10,100]), [0.01,0.1, 1, 10,100])
+plt.xticks(rotation=45)
+plt.legend().remove()
+plt.grid(False)
