@@ -10,10 +10,7 @@ if os.path.exists("../db/Test.asql"):
 	os.remove("../db/Test.asql")
 
 #load the dataset
-adata = sc.read("/home/kenny/Documents/OHSU/Projects/MouseMarmoset/adata_mouse_allages_allregions_forBroadSCPortal.h5ad", backed='r')
-
-#take the first x cells of the adata
-adata = adata[:10000].to_memory()
+adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed_test.h5ad", backed="r+")
 
 #make a annsql db from the subset
 MakeDb(adata=adata,db_name="Test",db_path="../db/")

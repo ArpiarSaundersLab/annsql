@@ -4,6 +4,9 @@ from MakeDb import MakeDb
 import scanpy as sc
 import os
 import time
+import warnings
+warnings.filterwarnings('ignore')
+
 
 class TestDatabase(unittest.TestCase):
 	def setUp(self):
@@ -26,8 +29,10 @@ class TestDatabase(unittest.TestCase):
 		self.assertEqual(len(result), self.adata.shape[0])
 
 	def test_backed_mode(self):
+		import warnings
+		warnings.filterwarnings('ignore')
 		self.adata = sc.datasets.pbmc3k_processed()
-		self.adata = sc.read_h5ad("data/pbmc3k_processed.h5ad", backed="r+")
+		self.adata = sc.read_h5ad("data/pbmc3k_processed.h5ad", backed="r")
 		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path)
 		adata_sql = AnnSQL.AnnSQL(db=self.db_file)
 		result = adata_sql.query("SELECT * FROM X")

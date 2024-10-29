@@ -62,7 +62,7 @@ class BuildDb:
 
 		#Create X with cell_id as varchar and var_names_df columns as float
 		#Note: casting as float expecting floating point calculations in future (e.g. normalization)
-		#consider making the OG cast a parameter for users who want to store as int
+		#consider making the OG duckdb cast a parameter for users who want to store as int
 		start_time = time.time()
 		self.conn.execute("CREATE TABLE X (cell_id VARCHAR,	{} )".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
 		end_time = time.time()

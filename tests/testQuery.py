@@ -1,6 +1,8 @@
 import unittest
 import AnnSQL as AnnSQL
 import scanpy as sc
+import warnings
+warnings.filterwarnings('ignore')
 
 class TestQuery(unittest.TestCase):
 	def setUp(self):
