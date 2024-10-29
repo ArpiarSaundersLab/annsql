@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: AnnSQL
-Version: 0.9.0
+Version: 0.9.1
 Summary: A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). 
 Home-page: https://github.com/kennypavan/AnnSQL
 Author: Kenny Pavan
@@ -60,7 +60,7 @@ adata_sql.query("SELECT * FROM adata", return_type="parquet")
 For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="#">manuscript</a> for benchmarks.
 ```python
 import scanpy as sc
-from MakeDb import MakeDb
+from AnnSQL.MakeDb import MakeDb
 
 #read sample data
 adata = sc.datasets.pbmc68k_reduced()
