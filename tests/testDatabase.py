@@ -1,6 +1,6 @@
 import unittest
 import AnnSQL as AnnSQL
-from MakeDb import MakeDb
+from AnnSQL.MakeDb import MakeDb
 import scanpy as sc
 import os
 import time

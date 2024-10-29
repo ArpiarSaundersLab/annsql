@@ -44,7 +44,7 @@ adata_sql.query("SELECT * FROM adata", return_type="parquet")
 For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="#">manuscript</a> for benchmarks.
 ```python
 import scanpy as sc
-from MakeDb import MakeDb
+from AnnSQL.MakeDb import MakeDb
 
 #read sample data
 adata = sc.datasets.pbmc68k_reduced()

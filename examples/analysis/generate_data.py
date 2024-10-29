@@ -3,7 +3,7 @@ import scanpy as sc
 from AnnSQL import AnnSQL
 import time
 import pandas as pd
-from MakeDb import MakeDb
+from AnnSQL.MakeDb import MakeDb
 import os
 import numpy as np
 import gc

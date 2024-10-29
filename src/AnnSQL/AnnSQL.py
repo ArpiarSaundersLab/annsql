@@ -1,4 +1,4 @@
-from BuildDb import BuildDb
+from .BuildDb import BuildDb
 import scanpy as sc
 import pandas as pd
 import duckdb

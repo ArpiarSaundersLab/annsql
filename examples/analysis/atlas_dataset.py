@@ -1,6 +1,7 @@
 #import libraries
 import scanpy as sc
 from AnnSQL import AnnSQL
+from AnnSQL.MakeDb import MakeDb
 import time
 
 #load the atlas dataset (4.4 million cells) in either memory or backed mode

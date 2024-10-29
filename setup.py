@@ -12,8 +12,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/kennypavan/AnnSQL",
-    packages=setuptools.find_packages(where='src/AnnSQL'),  
-    package_dir={'': 'src/AnnSQL'},  
+    packages=setuptools.find_packages(where='src'),  
+    package_dir={'': 'src'},  
 	python_requires='>=3.9',
     classifiers=[
         "Programming Language :: Python :: 3",
