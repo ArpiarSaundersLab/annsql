@@ -161,7 +161,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
     <tr>
       <td><code>calculate_total_counts(chunk_size, print_progress)</code></td>
       <td>
-          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
           <li><code>print_progress</code>: Boolean (optional. default: False)</li>
       </td>
       <td>Calculates total library size for each cell. Adds the column 'total_counts' directly to the `obs` and `X` table for convience.</td>
@@ -170,7 +170,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
       <td><code>expression_normalize(total_counts_per_cell, chunk_size, print_progress)</code></td>
       <td>
 	   	  <li><code>total_counts_per_cell</code>: Integer (optional. default: 1e4)</li>
-          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
           <li><code>print_progress</code>: Boolean (optional. default: False)</li>
       </td>
       <td>Updates the cell UMI counts to proportionally add to the total_counts_per_cell value. Directly updates the `X` table.</td>
@@ -179,7 +179,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
       <td><code>expression_log(log_type, chunk_size, print_progress)</code></td>
       <td>
 	   	  <li><code>log_type</code>: Accepts either LN, LOG2 or LOG10. String (optional. default: LN)</li>
-          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
           <li><code>print_progress</code>: Boolean (optional. default: False)</li>
       </td>
       <td>Log transforms the expression and directly updates the `X` table.</td>
@@ -187,7 +187,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
     <tr>
       <td><code>calculate_gene_counts(chunk_size, print_progress)</code></td>
       <td>
-          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
           <li><code>print_progress</code>: Boolean (optional. default: False)</li>
       </td>
       <td>Sums all genes (columns) in the `X` table and adds the results to the column, 'gene_counts' in the `var` table.</td>
@@ -196,7 +196,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
       <td><code>calculate_variable_genes(chunk_size, print_progress)</code></td>
       <td>
 	      <li><font color="orange"><b>Experimental</b></font></li>
-          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. Integer (optional. default: 200)</li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
           <li><code>print_progress</code>: Boolean (optional. default: False)</li>
       </td>
       <td>Takes the sample variance of each gene in the `X` table and adds the results to the 'variance' column in the `var` table. Includes Bessel's bias correction.</td>

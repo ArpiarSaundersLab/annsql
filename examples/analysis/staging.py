@@ -3,21 +3,21 @@ import scanpy as sc
 from AnnSQL import AnnSQL
 from MakeDb import MakeDb
 import time
+import os
 
-#load the atlas dataset (4.4 million cells)
-adata = sc.read("/home/kenny/Documents/OHSU/Projects/TAP/data/celltypist_models/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed='r')
+#delete the database if it exists
+if os.path.exists("../db/Test.asql"):
+	os.remove("../db/Test.asql")
 
-#take the first 5 cells of the adata
-subset = adata[:5].to_memory()
+#load the dataset
+adata = sc.read("/home/kenny/Documents/OHSU/Projects/MouseMarmoset/adata_mouse_allages_allregions_forBroadSCPortal.h5ad", backed='r')
+
+#take the first x cells of the adata
+adata = adata[:10000].to_memory()
 
 #make a annsql db from the subset
-MakeDb(adata=subset,db_name="Macosko_Mouse_Atlas_Test",db_path="../db/")
+MakeDb(adata=adata,db_name="Test",db_path="../db/")
 
-#open the database
-adata_sql = AnnSQL(db="../db/Macosko_Mouse_Atlas_Test.asql")
-
-#calculate the gene counts
-adata_sql.calculate_gene_counts(chunk_size=900, gene_field="gene_names_orig")
-
-adata_sql.query("select * from var order by gene_counts DESC")
-
+# #open the database
+asql = AnnSQL(db="../db/Test.asql")
+asql.show_tables()

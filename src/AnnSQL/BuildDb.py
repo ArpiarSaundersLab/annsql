@@ -9,6 +9,16 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class BuildDb:
+
+	sql_reserved_keywords = [
+		'add', 'all', 'alter', 'and', 'any', 'as', 'asc', 'between', 'by', 'case', 'cast', 'check', 
+		'column', 'create', 'cross', 'current_date', 'current_time', 'default', 'delete', 'desc', 
+		'distinct', 'drop', 'else', 'exists', 'false', 'for', 'foreign', 'from', 'full', 'group', 
+		'having', 'in', 'inner', 'insert', 'interval', 'into', 'is', 'join', 'left', 'like', 'limit', 
+		'not', 'null', 'on', 'or', 'order', 'outer', 'primary', 'references', 'right', 'select', 
+		'set', 'table', 'then', 'to', 'true', 'union', 'unique', 'update', 'values', 'when', 'where'
+	]
+
 	def __init__(self, 
 				conn=None, 
 				adata=None, 
@@ -51,13 +61,14 @@ class BuildDb:
 		print("Time to make var_names unique: ", end_time-start_time)
 
 		#Create X with cell_id as varchar and var_names_df columns as float
-		#import to do floating point calculations in future (e.g. normalization)
+		#Note: casting as float expecting floating point calculations in future (e.g. normalization)
+		#consider making the OG cast a parameter for users who want to store as int
 		start_time = time.time()
 		self.conn.execute("CREATE TABLE X (cell_id VARCHAR,	{} )".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
 		end_time = time.time()
-		print("Time to create X table schema: ", end_time-start_time)
+		print("Time to create X table structure: ", end_time-start_time)
 
-		#handle backed mode
+		#handles backed mode
 		if self.adata.isbacked:
 			if "X" in self.layers:
 				first_chunk = self.adata.X[:1].toarray() if hasattr(self.adata.X[:1], 'toarray') else self.adata.X[:1]
@@ -66,7 +77,7 @@ class BuildDb:
 				X_df = pd.concat([cell_id_df, X_df], axis=1)
 				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
 				chunk_size = 5000 
-				print(f"Starting backed mode data insert. Total rows: {self.adata.shape[0]}")
+				print(f"Starting backed mode X table data insert. Total rows: {self.adata.shape[0]}")
 				for start in range(0, self.adata.shape[0], chunk_size):
 					start_time = time.time()
 					end = min(start + chunk_size, self.adata.shape[0])
@@ -83,7 +94,6 @@ class BuildDb:
 				print("Skipping X layer")
 
 		else:
-			#not backed mode
 			if "X" in self.layers:
 				start_time = time.time()
 				X_df = pd.DataFrame(self.adata.X.toarray() if hasattr(self.adata.X, 'toarray') else self.adata.X,
@@ -100,7 +110,7 @@ class BuildDb:
 				print("Skipping X layer")
 
 
-		#these tables are usually not as large and shouldn't require chunking
+		#these tables usually are not as large as X and can be inserted in one go
 		if "obs" in self.layers:
 			self.conn.register('obs_df', obs_df)
 			self.conn.execute("CREATE TABLE obs AS SELECT * FROM obs_df")
@@ -117,7 +127,6 @@ class BuildDb:
 
 		if "var" in self.layers:
 			var["gene_names_orig"] = var.index
-			#var["gene_names"] = [self.replace_special_chars(col) for col in var_names]
 			if 'gene_name' in var.columns:
 				var["gene_names"] =  [col for col in var.gene_name]
 			else:
@@ -227,13 +236,9 @@ class BuildDb:
 				print(f"Error inserting key {key}: {e}")
 
 	def replace_special_chars(self, string):
-		reserved_words = ['cell_id','CAST','SELECT','UPDATE']
-		if string in reserved_words:
-			string = "r_"+string
+		if string.lower() in self.sql_reserved_keywords:
+			string = "r_"+string #prefix reserved keywords with r_. The OG can be found in gene_names_orig column
 		if string[0].isdigit():
 			return 'n'+string.replace("-", "_").replace(".", "_")
 		else:
-			return string.replace("-", "_").replace(".", "_").replace("(", "_").replace(")", "_").replace(",", "_")
-
-
-
+			return string.replace("-", "_").replace(".", "_").replace("(", "_").replace(")", "_").replace(",", "_").replace(" ", "_")

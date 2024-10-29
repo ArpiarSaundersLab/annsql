@@ -178,7 +178,7 @@ class AnnSQL:
 		print("Log Transform Complete")
 
 	
-	def calculate_total_counts(self, chunk_size=250, print_progress=False):
+	def calculate_total_counts(self, chunk_size=200, print_progress=False):
 		self.check_chunk_size(chunk_size)
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
 		
@@ -285,8 +285,6 @@ class AnnSQL:
 		self.conn.execute(f"UPDATE var SET variance = (SELECT variance FROM variance_df WHERE var.{gene_field} = variance_df.{gene_field})")
 		self.conn.execute("DROP VIEW IF EXISTS variance_df")
 		print("Variance Calculation Complete")
-
-
 
 
 	def check_chunk_size(self, chunk_size):
