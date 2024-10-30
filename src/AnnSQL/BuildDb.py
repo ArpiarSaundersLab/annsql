@@ -25,6 +25,7 @@ class BuildDb:
 				create_all_indexes=False, 
 				create_basic_indexes=False,
 				convenience_view=True,
+				chunk_size=5000,
 				layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = adata
 		self.conn = conn
@@ -32,6 +33,7 @@ class BuildDb:
 		self.create_basic_indexes = create_basic_indexes
 		self.convenience_view = convenience_view
 		self.layers = layers
+		self.chunk_size = chunk_size
 		self.build()
 		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
@@ -76,7 +78,7 @@ class BuildDb:
 				cell_id_df = pd.DataFrame(obs_df['cell_id'][:1]).reset_index(drop=True)
 				X_df = pd.concat([cell_id_df, X_df], axis=1)
 				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
-				chunk_size = 5000 
+				chunk_size = self.chunk_size 
 				print(f"Starting backed mode X table data insert. Total rows: {self.adata.shape[0]}")
 				for start in range(0, self.adata.shape[0], chunk_size):
 					start_time = time.time()

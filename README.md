@@ -221,6 +221,7 @@ adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_l
           <li><code>adata</code>: AnnData object (required)</li>
           <li><code>db_name</code>: Name for the database (required)</li>
           <li><code>db_path</code>: Path to store the database (default: 'db/')</li>
+		  <li><code>chunk_size</code>: When opening AnnData in backed mode, the amount of chunks to insert at one time. Lower the value for low-memory systems (default: 5000)</li>
 		  <li><code>layers</code>: List (optional. default: ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]).<i>The layers of the Anndata object to build into the database. For larger datasets, it may be beneficial to only include the layers you're interested in querying.</i></li>
           <li><code>create_basic_indexes</code>: Build indexed on cell_id (optional. default: False)</li>
 		  <li><code>create_all_indexes</code>: Boolean (optional. default: False). <i>Warning: Runtime can be significant when building.</i></li>
