@@ -1,4 +1,4 @@
-from .BuildDb import BuildDb
+from AnnSQL.BuildDb import BuildDb
 import scanpy as sc
 import pandas as pd
 import duckdb
@@ -12,6 +12,7 @@ class MakeDb:
 						create_basic_indexes=False, 
 						convenience_view=True, 
 						chunk_size=5000,
+						make_buffer_file=False,
 						layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = adata
 		self.db_name = db_name
@@ -21,6 +22,7 @@ class MakeDb:
 		self.create_basic_indexes = create_basic_indexes
 		self.convenience_view = convenience_view
 		self.chunk_size = chunk_size
+		self.make_buffer_file = make_buffer_file
 		self.validate_params()
 		self.build_db()
 
@@ -43,5 +45,5 @@ class MakeDb:
 
 	def build_db(self):
 		self.create_db()
-		BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, convenience_view=self.convenience_view, layers=self.layers, chunk_size=self.chunk_size)
+		BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, convenience_view=self.convenience_view, layers=self.layers, chunk_size=self.chunk_size, db_path=self.db_path, db_name=self.db_name, make_buffer_file=self.make_buffer_file)
 		self.conn.close()

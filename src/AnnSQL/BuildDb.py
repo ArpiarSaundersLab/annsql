@@ -1,11 +1,16 @@
 import scanpy as sc
 import pandas as pd
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import duckdb
 import os 
 import json
 import time
+import gc
+import psutil
 import warnings
+from memory_profiler import profile
 warnings.filterwarnings('ignore')
 
 class BuildDb:
@@ -21,23 +26,36 @@ class BuildDb:
 
 	def __init__(self, 
 				conn=None, 
+				db_path=None,
+				db_name=None,
 				adata=None, 
 				create_all_indexes=False, 
 				create_basic_indexes=False,
 				convenience_view=True,
 				chunk_size=5000,
+				make_buffer_file=False,
 				layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		self.adata = adata
 		self.conn = conn
+		self.db_path = db_path
+		self.db_name = db_name
 		self.create_all_indexes = create_all_indexes
 		self.create_basic_indexes = create_basic_indexes
 		self.convenience_view = convenience_view
 		self.layers = layers
 		self.chunk_size = chunk_size
+		self.make_buffer_file = make_buffer_file
 		self.build()
 		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
+	
+	
+	def print_memory_usage(self,chunk_num, id=1):
+		process = psutil.Process()
+		mem_info = process.memory_info()
+		print(f"Chunk {chunk_num} - id {id} Memory usage: {mem_info.rss / (1024 ** 2):.2f} MB")
 
+	#@profile
 	def build(self):
 		obs_df = self.adata.obs.reset_index()
 		var_names = self.adata.var_names
@@ -62,6 +80,9 @@ class BuildDb:
 		end_time = time.time()
 		print("Time to make var_names unique: ", end_time-start_time)
 
+		#clean the column names for SQL
+		var_names_clean = [self.replace_special_chars(col) for col in var_names]
+
 		#Create X with cell_id as varchar and var_names_df columns as float
 		#Note: casting as float expecting floating point calculations in future (e.g. normalization)
 		#consider making the OG duckdb cast a parameter for users who want to store as int
@@ -69,29 +90,51 @@ class BuildDb:
 		self.conn.execute("CREATE TABLE X (cell_id VARCHAR,	{} )".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
 		end_time = time.time()
 		print("Time to create X table structure: ", end_time-start_time)
+		
 
 		#handles backed mode
 		if self.adata.isbacked:
 			if "X" in self.layers:
-				first_chunk = self.adata.X[:1].toarray() if hasattr(self.adata.X[:1], 'toarray') else self.adata.X[:1]
-				X_df = pd.DataFrame(first_chunk, columns=var_names)
-				cell_id_df = pd.DataFrame(obs_df['cell_id'][:1]).reset_index(drop=True)
-				X_df = pd.concat([cell_id_df, X_df], axis=1)
-				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
 				chunk_size = self.chunk_size 
+				if os.path.exists(f"{self.db_path}{self.db_name}_X.parquet"):
+					os.remove(f"{self.db_path}{self.db_name}_X.parquet")
 				print(f"Starting backed mode X table data insert. Total rows: {self.adata.shape[0]}")
+				writer = None
 				for start in range(0, self.adata.shape[0], chunk_size):
 					start_time = time.time()
 					end = min(start + chunk_size, self.adata.shape[0])
-					X_chunk = self.adata.X[start:end].toarray() if hasattr(self.adata.X[start:end], 'toarray') else self.adata.X[start:end]
-					X_chunk_df = pd.DataFrame(X_chunk, columns=var_names)
-					cell_id_chunk_df = pd.DataFrame(obs_df['cell_id'][start:end]).reset_index(drop=True)
-					X_chunk_df = pd.concat([cell_id_chunk_df, X_chunk_df], axis=1)
-					self.conn.register('X_chunk_df', X_chunk_df)
-					self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df")
-					self.conn.unregister('X_chunk_df')
-					print(f"Inserted row chunk {start}-{end-1} in {time.time()-start_time} seconds")
-				print(f"Finished inserting data in chunks.")
+
+					X_chunk_df = self.adata[start:end].to_df()
+					X_chunk_df = X_chunk_df.reset_index()
+					X_chunk_df.columns = ['cell_id'] + list(var_names_clean)
+
+					if self.make_buffer_file == False:
+						self.conn.execute("BEGIN TRANSACTION;")
+						self.conn.execute("SET preserve_insertion_order = false;")
+						self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df;")
+						self.conn.execute("COMMIT;")
+					else:
+						table = pa.Table.from_pandas(X_chunk_df)
+						if writer is None:
+							writer = pq.ParquetWriter(f"{self.db_path}{self.db_name}_X.parquet", table.schema)
+						writer.write_table(table)
+
+					del X_chunk_df
+					gc.collect()
+					print(f"Processed chunk {start}-{end-1} in {time.time()-start_time} seconds")
+
+				if writer is not None:
+					writer.close()
+					
+				if self.make_buffer_file == True:
+					start_time = time.time()
+					print("\nToo close for missiles, switching to guns\nCreating X table from buffer file.\nThis may take a while...")
+					self.conn.execute(f"INSERT INTO X SELECT * FROM read_parquet('{self.db_path}{self.db_name}_X.parquet')")
+					print(f"Time to create X table from buffer: {time.time()-start_time}")
+					os.remove(f"{self.db_path}{self.db_name}_X.parquet")
+
+				print(f"Finished inserting X data.")
+
 			else:
 				print("Skipping X layer")
 
