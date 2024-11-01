@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='AnnSQL',
-    version='v0.9.3',
+    version='v0.9.4',
     author="Kenny Pavan",
     author_email="pavan@ohsu.edu",
     description="A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). ",
@@ -14,7 +14,7 @@ setuptools.setup(
     url="https://github.com/kennypavan/AnnSQL",
     packages=setuptools.find_packages(where='src'),  
     package_dir={'': 'src'},  
-	python_requires='>=3.9',
+	python_requires='>=3.12',
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

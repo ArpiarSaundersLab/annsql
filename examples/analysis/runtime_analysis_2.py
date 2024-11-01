@@ -1,3 +1,6 @@
+#NOTE: This script is different from runtime_analysis.py in that 
+# it doesn't wrap the AnnData filter in a pandas DataFrame.
+
 import scanpy as sc
 from AnnSQL import AnnSQL
 import time
@@ -41,9 +44,8 @@ for i in dataset_sizes:
 		print(f"memory annsql filter 1: {time1} seconds")
 
 		#memory AnnData approach
-		# Why wrap in pd.DataFrame? AnnSQL returns a DataFrame, so we attempt to compare apples to apples
 		start_time = time.time()
-		pd.DataFrame(adata_memory[adata_memory[:, "gene_1"].X > 0.5, "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[adata_memory[:, "gene_1"].X > 0.5, "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 1: {time2} seconds")
 
@@ -59,7 +61,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[adata_disk[:, "gene_1"].X > 0.5, "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[adata_disk[:, "gene_1"].X > 0.5, "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 1: {time4} seconds")
 
@@ -81,7 +83,7 @@ for i in dataset_sizes:
 
 		#memory AnnData approach
 		start_time = time.time()
-		pd.DataFrame(adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5), "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 2: {time2} seconds")
 
@@ -98,7 +100,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5), "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 2: {time4} seconds")
 
@@ -119,7 +121,7 @@ for i in dataset_sizes:
 
 		#memory AnnData approach
 		start_time = time.time()
-		pd.DataFrame(adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5), "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5), "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 3: {time2} seconds")
 
@@ -135,7 +137,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5), "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5), "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 3: {time4} seconds")
 
@@ -157,7 +159,7 @@ for i in dataset_sizes:
 
 		#memory AnnData approach
 		start_time = time.time()
-		pd.DataFrame(adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5) & (adata_memory[:, "gene_4"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5) & (adata_memory[:, "gene_4"].X < 0.5), "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 4: {time2} seconds")
 
@@ -173,7 +175,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5) & (adata_disk[:, "gene_4"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5) & (adata_disk[:, "gene_4"].X < 0.5), "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 4: {time4} seconds")
 
@@ -338,10 +340,10 @@ comparisons['size_log'] = np.log(comparisons['size'])
 comparisons['size_log10'] = np.log10(comparisons['size'])
 
 #store the data
-comparisons.to_csv("../results/comparisons.csv", index=False)
+comparisons.to_csv("../results/comparisons_2.csv", index=False)
 
 #load the data
-comparisons = pd.read_csv("../results/comparisons.csv")
+comparisons = pd.read_csv("../results/comparisons_2.csv")
 
 #set the colors of the plots (ansql1, anndata in-mem, ansql2, anndata backed)
 colors = ["#07b88e", "#a4a6a4", "#07b88e", "#a4a6a4"]

@@ -12,7 +12,8 @@ To get started, see the usage notes below or refer to the example scripts in the
 - Create in-memory or on-disk databases directly from AnnData objects.
 - **Fast** for complex queries and aggregative functions.
 
-## Installation
+## Installation (Python >= 3.12)
+*Warning:* Higher memory consumption using Apple M-Series is expected when building AnnSQL databases.
 ```
 pip install annsql
 ```

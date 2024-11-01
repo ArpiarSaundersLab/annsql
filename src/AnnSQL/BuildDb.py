@@ -56,13 +56,24 @@ class BuildDb:
 		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
 	
-	
+	def determine_buffer_status(self):
+		mem = psutil.virtual_memory()
+		if mem.total <= 20 * 1024 ** 3:
+			print("=========================================================================")
+			print("Low memory system detected. (<=20GB)")
+			print("Using a buffer. Building the Db will take longer...")
+			print("To disable this, explicitly set the parameter to: make_buffer_file=False")
+			print("=========================================================================")
+			self.make_buffer_file = True
+		else:
+			self.make_buffer_file = False
+
+
 	def print_memory_usage(self,chunk_num, id=1):
 		process = psutil.Process()
 		mem_info = process.memory_info()
 		print(f"Chunk {chunk_num} - id {id} Memory usage: {mem_info.rss / (1024 ** 2):.2f} MB")
 
-	#@profile
 	def build(self):
 		obs_df = self.adata.obs.reset_index()
 		var_names = self.adata.var_names
@@ -98,7 +109,6 @@ class BuildDb:
 		end_time = time.time()
 		print("Time to create X table structure: ", end_time-start_time)
 		
-
 		#handles backed mode
 		if self.adata.isbacked:
 			if "X" in self.layers:
@@ -148,14 +158,13 @@ class BuildDb:
 		else:
 			if "X" in self.layers:
 				start_time = time.time()
-				X_df = pd.DataFrame(self.adata.X.toarray() if hasattr(self.adata.X, 'toarray') else self.adata.X,
-									columns=var_names)
-				cell_id_df = pd.DataFrame(obs_df['cell_id']).reset_index(drop=True)
-				X_df = pd.concat([cell_id_df, X_df], axis=1)
-				X_df.columns = ['cell_id'] + list(X_df.columns[1:])
-				self.conn.register('X_df', X_df)
-				self.conn.execute("INSERT INTO X SELECT * FROM X_df")
-				self.conn.unregister('X_df')
+				X_df = self.adata[start:end].to_df()
+				X_df = X_df.reset_index()
+				X_df.columns = ['cell_id'] + list(var_names_clean)
+				self.conn.execute("BEGIN TRANSACTION;")
+				self.conn.execute("SET preserve_insertion_order = false;")
+				self.conn.execute("INSERT INTO X SELECT * FROM X_df;")
+				self.conn.execute("COMMIT;")
 				end_time = time.time()
 				print("Time to insert X data: ", end_time-start_time )
 			else:
@@ -219,7 +228,7 @@ class BuildDb:
 		else:
 			print("Skipping obsp layer")
 
-		#indexes (resource intensive. only recommended for small datasets)
+		#indexes (Warning: resource intensive. only recommended for small datasets)
 		if self.create_all_indexes == True:
 			if "X" in self.layers:
 				for column in X_df.columns:
