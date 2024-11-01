@@ -158,7 +158,7 @@ class BuildDb:
 		else:
 			if "X" in self.layers:
 				start_time = time.time()
-				X_df = self.adata[start:end].to_df()
+				X_df = self.adata.to_df()
 				X_df = X_df.reset_index()
 				X_df.columns = ['cell_id'] + list(var_names_clean)
 				self.conn.execute("BEGIN TRANSACTION;")
