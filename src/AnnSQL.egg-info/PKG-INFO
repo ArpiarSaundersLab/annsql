@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: AnnSQL
-Version: 0.9.2
+Version: 0.9.3
 Summary: A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). 
 Home-page: https://github.com/kennypavan/AnnSQL
 Author: Kenny Pavan

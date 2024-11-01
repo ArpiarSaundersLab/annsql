@@ -8,6 +8,21 @@ import os
 
 class AnnSQL:
 	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+		"""
+		Initializes an instance of the AnnSQL class. This class is used to query and update a database created from an AnnData object. 
+		it also provides methods for data normalization and transformation. The in-process database engine is DuckDB AND the database is 
+		stored in memory by default, However, the database can be loaded from a file path by providing the db parameter. Databases can be
+		built from an AnnData object by using the MakeDb class.
+
+		Parameters:
+			- adata (AnnData or None): An AnnData object containing the data to be stored in the database. If None, an empty AnnData object will be created.
+			- db (str or None): The path to an existing database file. 
+			- create_all_indexes (bool): Whether to create indexes for all columns in the database. Memory intensive. Default is False.
+			- create_basic_indexes (bool): Whether to create indexes for basic columns. Default is False.
+			- layers (list): A list of layer names to be stored in the database. Default is ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"].
+		Returns:
+			None
+		"""		
 		self.adata = self.open_anndata(adata)
 		self.db = db
 		self.create_basic_indexes = create_basic_indexes
@@ -168,9 +183,7 @@ class AnnSQL:
 			for gene in chunk:
 				if gene == 'total_counts':
 					continue
-				updates.append(f"{gene} = {log_type}({gene}+1)")
-				#handle zero values
-				#updates.append(f"{gene} = CASE WHEN {gene} = 0 OR {gene} = 0.0 THEN 0.0 ELSE {log_type}({gene}) END")
+				updates.append(f"{gene} = {log_type}({gene}+1)") #handle zero values like scanpy
 			update_query = f"UPDATE X SET {', '.join(updates)}"
 			self.update_query(update_query, suppress_message=True)
 			if print_progress == True:
@@ -285,7 +298,6 @@ class AnnSQL:
 		self.conn.execute(f"UPDATE var SET variance = (SELECT variance FROM variance_df WHERE var.{gene_field} = variance_df.{gene_field})")
 		self.conn.execute("DROP VIEW IF EXISTS variance_df")
 		print("Variance Calculation Complete")
-
 
 	def check_chunk_size(self, chunk_size):
 		if chunk_size > 999:

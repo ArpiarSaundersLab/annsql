@@ -24,17 +24,24 @@ class BuildDb:
 		'set', 'table', 'then', 'to', 'true', 'union', 'unique', 'update', 'values', 'when', 'where'
 	]
 
-	def __init__(self, 
-				conn=None, 
-				db_path=None,
-				db_name=None,
-				adata=None, 
-				create_all_indexes=False, 
-				create_basic_indexes=False,
-				convenience_view=True,
-				chunk_size=5000,
-				make_buffer_file=False,
-				layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, conn=None, db_path=None, db_name=None, adata=None, create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,	make_buffer_file=False,	layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+		"""
+		Initializes the BuildDb object. This object is used to create a database from an AnnData object byway of the MakeDb object.
+
+		Parameters:
+			- conn (optional): Connection object to the database.
+			- db_path (optional): Path to the database file.
+			- db_name (optional): Name of the database.
+			- adata (optional): AnnData object.
+			- create_all_indexes (optional): Flag indicating whether to create all indexes.
+			- create_basic_indexes (optional): Flag indicating whether to create basic indexes.
+			- convenience_view (optional): Flag indicating whether to create a convenience view.
+			- chunk_size (optional): Size of the chunks for processing the data.
+			- make_buffer_file (optional): Flag indicating whether to create a buffer file.
+			- layers (optional): List of layers to include in the database.
+		Returns:
+			None
+		"""
 		self.adata = adata
 		self.conn = conn
 		self.db_path = db_path

@@ -5,18 +5,28 @@ import duckdb
 import os 
 
 class MakeDb:
-	def __init__(self, adata=None, 
-						db_name=None, 
-						db_path="db/", 
-						create_all_indexes=False, 
-						create_basic_indexes=False, 
-						convenience_view=True, 
-						chunk_size=5000,
-						make_buffer_file=False,
-						layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, adata=None, 	db_name=None, db_path="db/", create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,make_buffer_file=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+		"""
+		Initializes the MakeDb object. This object is used to create a database from an AnnData object.
+
+		Parameters:
+			- adata: AnnData object, (optional): The AnnData object to be used for creating the database.
+			- db_name: str, (optional): The name of the database.
+			- db_path: str, (optional): The path where the database will be created. Must have a trailing slash.
+			- create_all_indexes: bool, (optional): Whether to create indexes for all layers in the database.
+			- create_basic_indexes: bool, (optional): Whether to create indexes for basic layers in the database.
+			- convenience_view: bool, (optional): Whether to create a convenience view for the database.
+			- chunk_size: int, (optional):	The number of cells to be processed in each chunk.
+			- make_buffer_file: bool, (optional): Whether to create a buffer file for storing intermediate data. Necessary for low memory systems (<=12Gb).
+			- layers: list of str, (optional): The layers to be included in the database.
+		Returns:
+			None
+		"""
 		self.adata = adata
 		self.db_name = db_name
 		self.db_path = db_path
+		if not self.db_path.endswith('/'): #add trailing slash
+			self.db_path += '/'
 		self.layers = layers
 		self.create_all_indexes = create_all_indexes
 		self.create_basic_indexes = create_basic_indexes
