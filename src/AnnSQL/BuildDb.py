@@ -176,6 +176,7 @@ class BuildDb:
 			self.conn.register('obs_df', obs_df)
 			self.conn.execute("CREATE TABLE obs AS SELECT * FROM obs_df")
 			self.conn.unregister('obs_df')
+			print("Finished inserting obs data")
 		else:
 			print("Skipping obs layer")
 
@@ -183,6 +184,7 @@ class BuildDb:
 			self.conn.register('var_names_df', var_names_df)
 			self.conn.execute("CREATE TABLE var_names AS SELECT * FROM var_names_df")
 			self.conn.unregister('var_names_df')
+			print("Finished inserting var_names data")
 		else:
 			print("Skipping var_names layer")
 
@@ -197,6 +199,7 @@ class BuildDb:
 			self.conn.register('var_df', var)
 			self.conn.execute("CREATE TABLE var AS SELECT * FROM var_df")
 			self.conn.unregister('var_df')
+			print("Finished inserting var data")
 		else:
 			print("Skipping var layer")
 
@@ -206,6 +209,7 @@ class BuildDb:
 				self.conn.register(f'obsm_{key}_df', obsm_df)
 				self.conn.execute(f"CREATE TABLE obsm_{key} AS SELECT * FROM obsm_{key}_df")
 				self.conn.unregister(f'obsm_{key}_df')
+			print("Finished inserting obsm data")
 		else:
 			print("Skipping obsm layer")
 
@@ -216,6 +220,7 @@ class BuildDb:
 				self.conn.register(f'varm_{key}_df', varm_df)
 				self.conn.execute(f"CREATE TABLE varm_{key} AS SELECT * FROM varm_{key}_df")
 				self.conn.unregister(f'varm_{key}_df')
+			print("Finished inserting varm data")
 		else:
 			print("Skipping varm layer")
 
@@ -225,6 +230,7 @@ class BuildDb:
 				self.conn.register(f'obsp_{key}_df', obsp_df)
 				self.conn.execute(f"CREATE TABLE obsp_{key} AS SELECT * FROM obsp_{key}_df")
 				self.conn.unregister(f'obsp_{key}_df')
+			print("Finished inserting obsp data")
 		else:
 			print("Skipping obsp layer")
 
