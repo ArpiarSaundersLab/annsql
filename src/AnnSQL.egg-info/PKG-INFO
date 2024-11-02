@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: AnnSQL
-Version: 0.9.4
+Version: 0.9.5
 Summary: A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). 
 Home-page: https://github.com/kennypavan/AnnSQL
 Author: Kenny Pavan
@@ -44,16 +44,16 @@ import scanpy as sc
 adata = sc.datasets.pbmc68k_reduced()
 
 #instantiate the AnnData object (you may also pass a h5ad file to the adata parameter)
-adata_sql = AnnSQL(adata=adata)
+asql = AnnSQL(adata=adata)
 
 #query the expression table. Returns Pandas Dataframe by Default
-adata_sql.query("SELECT * FROM X")
+asql.query("SELECT * FROM X")
 
 #query the observation table. Returns adata object.
-adata_sql.query("SELECT * FROM obs", return_type="adata")
+asql.query("SELECT * FROM obs", return_type="adata")
 
 #query the join of 'X' and 'obs' table
-adata_sql.query("SELECT * FROM adata", return_type="parquet")
+asql.query("SELECT * FROM adata", return_type="parquet")
 ```
 
 
@@ -70,10 +70,10 @@ adata = sc.datasets.pbmc68k_reduced()
 MakeDb(adata=adata, db_name="pbmc3k_reduced", db_path="db/")
 
 #open the AnnSQL database
-adata_sql = AnnSQL(db="db/pbmc3k_reduced.asql")
+asql = AnnSQL(db="db/pbmc3k_reduced.asql")
 
 #query the expression table
-adata_sql.query("SELECT * FROM adata")
+asql.query("SELECT * FROM adata")
 ```
 
 ## Entity Relationship Diagram
@@ -99,19 +99,19 @@ import scanpy as sc
 adata = sc.datasets.pbmc68k_reduced()
 
 #pass the AnnData object to the AnnSQL class
-adata_sql = AnnSQL(adata=adata)
+asql = AnnSQL(adata=adata)
 
 #group and count all labels
-adata_sql.query("SELECT obs.bulk_labels, COUNT(*) FROM obs GROUP BY obs.bulk_labels")
+asql.query("SELECT obs.bulk_labels, COUNT(*) FROM obs GROUP BY obs.bulk_labels")
 
 #take the log10 of a value
-adata_sql.query("SELECT LOG10(HES4) FROM X WHERE HES4 > 0")
+asql.query("SELECT LOG10(HES4) FROM X WHERE HES4 > 0")
 
-#sum all gene counts
-adata_sql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)")
+#sum all gene counts | Memory intensive | See method calculate_gene_counts for chunked approach.
+asql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)")
 
 #taking the correlation of genes ITGB2 and SSU72 in dendritic cells that express either gene > 0
-adata_sql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_labels = 'Dendritic' AND (ITGB2 > 0 OR SSU72 >0)")
+asql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_labels = 'Dendritic' AND (ITGB2 > 0 OR SSU72 >0)")
 
 ```
 
@@ -277,23 +277,23 @@ adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed
 MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"])
 
 #query example | Runtime: 0.24sec
-adata_sql.query("SELECT ENSMUSG00000070880 FROM X WHERE ENSMUSG00000070880 > 0")
+asql.query("SELECT ENSMUSG00000070880 FROM X WHERE ENSMUSG00000070880 > 0")
 
 #count the number of cells in each cluster | Runtime: 0.35sec
-adata_sql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
+asql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
 
 #determine the total counts per cell library | Runtime: 4min 30sec
-adata_sql.calculate_total_counts(chunk_size=950)
+asql.calculate_total_counts(chunk_size=950)
 
 #normalize umi counts to 10k per cell | Runtime: 1hr 48mins
-adata_sql.expression_normalize(total_counts_per_cell=1e4, chunk_size=300) 
+asql.expression_normalize(total_counts_per_cell=1e4, chunk_size=300) 
 
 #log scale the normalized counts | Runtime: 59mins 13sec
-adata_sql.expression_log(log_type="LOG2", chunk_size=250)
+asql.expression_log(log_type="LN", chunk_size=250)
 
 ```
 
-## Laptop system details for runtime analyses displayed above.
+## Laptop system details for both runtime analyses displayed above.
 - **Memory:**                                      40.0 GiB
 - **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
 - **Disk Capacity:**                               1.0 TB
