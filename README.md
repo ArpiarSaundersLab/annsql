@@ -13,7 +13,8 @@ To get started, see the usage notes below or refer to the example scripts in the
 - **Fast** for complex queries and aggregative functions.
 
 ## Installation (Python >= 3.12)
-*Warning:* Higher memory consumption using Apple M-Series is expected when building AnnSQL databases.
+**Note:** Higher memory consumption using Apple M-Series is expected when building AnnSQL databases. <br />
+Please use the *make_buffer_file* parameter when using the *MakeDb* class if you experience memory related issues. 
 ```
 pip install annsql
 ```
