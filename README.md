@@ -42,7 +42,7 @@ asql.query("SELECT * FROM adata", return_type="parquet")
 
 
 ## Basic Usage (On-Disk)
-For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="#">manuscript</a> for benchmarks.
+For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="https://www.biorxiv.org/content/10.1101/2024.11.02.621676v1" target="_blank">manuscript</a> for benchmarks.
 ```python
 import scanpy as sc
 from AnnSQL import AnnSQL
@@ -291,7 +291,9 @@ asql.expression_log(log_type="LN", chunk_size=250)
 
 
 ## Citation
-Coming soon...
+AnnSQL: A Python SQL-based package for large-scale single-cell genomics analysis on a laptop
+Kenny Pavan, Arpiar Saunders
+bioRxiv 2024.11.02.621676; doi: https://doi.org/10.1101/2024.11.02.621676
 
 <br>
 <br>
