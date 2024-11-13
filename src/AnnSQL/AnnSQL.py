@@ -299,6 +299,94 @@ class AnnSQL:
 		self.conn.execute("DROP VIEW IF EXISTS variance_df")
 		print("Variance Calculation Complete")
 
+
+	def build_meta_cells(self, primary_cluster=None, secondary_cluster=None, aggregate_type="AVG", table_name="meta_cells", chunk_size=100, print_progress=False):
+		self.check_chunk_size(chunk_size)
+		columns = self.query("DESCRIBE X")[1:]["column_name"].tolist()
+		self.query_raw(f"DROP TABLE IF EXISTS {table_name}")
+		self.query_raw(f"""
+						CREATE TABLE {table_name} AS 
+							SELECT CAST('' as Varchar) as {primary_cluster},
+							CAST('' as Varchar) as {secondary_cluster},
+							CAST(0 as Float) as cell_count,
+							* 
+						FROM X WHERE FALSE;""")
+
+		if primary_cluster is not None and secondary_cluster is not None:
+			self.query_raw(f"""
+				INSERT INTO {table_name} ({primary_cluster}, {secondary_cluster}, cell_count)
+				SELECT 
+					obs.{primary_cluster} as {primary_cluster},
+					obs.{secondary_cluster} as {secondary_cluster},
+					0 as cell_count
+				FROM obs
+				GROUP BY obs.{primary_cluster}, obs.{secondary_cluster}
+			""")
+
+			#process in chunks
+			for i in range(0, len(columns), chunk_size):
+				if print_progress == True:
+					print(f"Processing chunk {i + 1} of {i + chunk_size}")
+				chunk_columns = columns[i:i+chunk_size]
+				chunk_query = ", ".join([f"{aggregate_type}(X.{col}) as {col}" for col in chunk_columns])
+				update_query = f"""
+					UPDATE {table_name}
+					SET 
+						cell_count = sub.cell_count,
+						{", ".join([f"{col} = sub.{col}" for col in chunk_columns])}
+					FROM (
+						SELECT 
+							obs.{primary_cluster} as {primary_cluster},
+							obs.{secondary_cluster} as {secondary_cluster},
+							COUNT(X.cell_id) as cell_count,
+							{chunk_query}
+						FROM X
+						INNER JOIN obs ON X.cell_id = obs.cell_id
+						GROUP BY obs.{secondary_cluster}, obs.{primary_cluster}
+					) as sub
+					WHERE 
+						{table_name}.{primary_cluster} = sub.{primary_cluster} AND
+						{table_name}.{secondary_cluster} = sub.{secondary_cluster}
+				"""
+				self.query_raw(update_query)
+		else:
+			self.query_raw(f"""
+				INSERT INTO {table_name} ({primary_cluster}, cell_count)
+				SELECT 
+					obs.{primary_cluster} as {primary_cluster},
+					0 as cell_count
+				FROM obs
+				GROUP BY obs.{primary_cluster}
+			""")
+
+			#process in chunks
+			for i in range(0, len(columns), chunk_size):
+				if print_progress == True:
+					print(f"Processing chunk {i + 1} of {i + chunk_size}")
+				chunk_columns = columns[i:i+chunk_size]
+				chunk_query = ", ".join([f"{aggregate_type}(X.{col}) as {col}" for col in chunk_columns])
+				update_query = f"""
+					UPDATE {table_name}
+					SET 
+						cell_count = sub.cell_count,
+						{", ".join([f"{col} = sub.{col}" for col in chunk_columns])}
+					FROM (
+						SELECT 
+							obs.{primary_cluster} as {primary_cluster},
+							COUNT(X.cell_id) as cell_count,
+							{chunk_query}
+						FROM X
+						INNER JOIN obs ON X.cell_id = obs.cell_id
+						GROUP BY obs.{primary_cluster}
+					) as sub
+					WHERE 
+						{table_name}.{primary_cluster} = sub.{primary_cluster}
+				"""
+				self.query_raw(update_query)
+		
+		print(f"{table_name} table created. You may now query the table for results.")
+
+
 	def check_chunk_size(self, chunk_size):
 		if chunk_size > 999:
 			raise ValueError('chunk_size must be less than 1000. DuckDb limitation')

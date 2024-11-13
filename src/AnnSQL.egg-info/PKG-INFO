@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: AnnSQL
-Version: 0.9.8
+Version: 0.9.9
 Summary: A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). 
 Home-page: https://github.com/ArpiarSaundersLab/annsql
 Author: Kenny Pavan
@@ -32,7 +32,8 @@ To get started, see the usage notes below or refer to the example scripts in the
 - **Fast** for complex queries and aggregative functions.
 
 ## Installation (Python >= 3.12)
-*Warning:* Higher memory consumption using Apple M-Series is expected when building AnnSQL databases.
+**Note:** Higher memory consumption using Apple M-Series is expected when building AnnSQL databases. <br />
+Please use the *make_buffer_file* parameter when using the *MakeDb* class if you experience memory related issues. 
 ```
 pip install annsql
 ```
@@ -61,7 +62,7 @@ asql.query("SELECT * FROM adata", return_type="parquet")
 
 
 ## Basic Usage (On-Disk)
-For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="#">manuscript</a> for benchmarks.
+For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried. Storage requirements are similar to the original AnnData h5ad filesize; however, complex aggregative functions can now benefit from the DuckDb engine with full SQL support. Please see <a href="https://www.biorxiv.org/content/10.1101/2024.11.02.621676v1" target="_blank">manuscript</a> for benchmarks.
 ```python
 import scanpy as sc
 from AnnSQL import AnnSQL
@@ -222,7 +223,19 @@ asql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_labels
       </td>
       <td>Takes the sample variance of each gene in the `X` table and adds the results to the 'variance' column in the `var` table. Includes Bessel's bias correction.</td>
     </tr>
-
+    <tr>
+      <td><code>build_meta_cells(primary_cluster, secondary_cluster, aggregate_type, table_name, chunk_size,print_progress)</code></td>
+      <td>
+	      <li><font color="orange"><b>Experimental</b></font></li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+          <li><code>primary_cluster</code>: The observation column found in the `obs` table to group the meta cells.  String (required. default: None)</li>
+          <li><code>secondary_cluster</code>: If present, cells will be grouped by a primary and secondary category. For example cluster, then sub-cluster. Myst be a column found in the `obs` table. String (optional. default: None)</li>
+          <li><code>aggregate_type</code>: The type of meta cell to create. Acceptable values include AVG, SUM, MIN, MAX. String (optional. default: AVG)</li>
+          <li><code>table_name</code>: The table to create and store the meta cell details. String (optional. default: meta_cells)</li>
+      </td>
+      <td>Builds a table that contains groupings of meta cells and all of their genes. Useful for exploring extremely large datasets. </td>
+    </tr>
   </tbody>
 </table>
 
@@ -310,7 +323,9 @@ asql.expression_log(log_type="LN", chunk_size=250)
 
 
 ## Citation
-Coming soon...
+AnnSQL: A Python SQL-based package for large-scale single-cell genomics analysis on a laptop<br />
+Kenny Pavan, Arpiar Saunders<br />
+bioRxiv 2024.11.02.621676; doi: https://doi.org/10.1101/2024.11.02.621676
 
 <br>
 <br>

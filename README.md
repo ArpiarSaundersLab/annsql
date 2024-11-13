@@ -204,7 +204,19 @@ asql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_labels
       </td>
       <td>Takes the sample variance of each gene in the `X` table and adds the results to the 'variance' column in the `var` table. Includes Bessel's bias correction.</td>
     </tr>
-
+    <tr>
+      <td><code>build_meta_cells(primary_cluster, secondary_cluster, aggregate_type, table_name, chunk_size,print_progress)</code></td>
+      <td>
+	      <li><font color="orange"><b>Experimental</b></font></li>
+          <li><code>chunk_size</code>: The amount of columns to perform the calculations on concurrently. DuckDb has a limit of 1000. Adjust this value to match the resources available. A higher number will decrease runtime, but requires more resources. Integer (optional. default: 200)</li>
+          <li><code>print_progress</code>: Boolean (optional. default: False)</li>
+          <li><code>primary_cluster</code>: The observation column found in the `obs` table to group the meta cells.  String (required. default: None)</li>
+          <li><code>secondary_cluster</code>: If present, cells will be grouped by a primary and secondary category. For example cluster, then sub-cluster. Myst be a column found in the `obs` table. String (optional. default: None)</li>
+          <li><code>aggregate_type</code>: The type of meta cell to create. Acceptable values include AVG, SUM, MIN, MAX. String (optional. default: AVG)</li>
+          <li><code>table_name</code>: The table to create and store the meta cell details. String (optional. default: meta_cells)</li>
+      </td>
+      <td>Builds a table that contains groupings of meta cells and all of their genes. Useful for exploring extremely large datasets. </td>
+    </tr>
   </tbody>
 </table>
 
