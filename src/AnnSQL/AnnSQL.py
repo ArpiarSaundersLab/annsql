@@ -108,7 +108,7 @@ class AnnSQL:
 			print("Update Query Error:", e)
 
 	def delete_query(self, query, suppress_message=False):
-		if 'SELECT' in query.upper() or 'UPDATE' in query.upper():
+		if 'DELETE' not in query.upper():
 			raise ValueError('SELECT detected. Please use query() instead')
 		try:
 			self.open_db()
@@ -390,3 +390,26 @@ class AnnSQL:
 	def check_chunk_size(self, chunk_size):
 		if chunk_size > 999:
 			raise ValueError('chunk_size must be less than 1000. DuckDb limitation')
+
+	def filter_by_cell_counts(self, min_cell_count=None, max_cell_count=None):
+		if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+			print("Total counts not found. Running total counts...")
+			self.calculate_total_counts()
+		if min_cell_count >= 0 and max_cell_count is None:
+			query_x = f"DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE total_counts < {min_cell_count})"
+			query_obs = f"DELETE FROM obs WHERE total_counts < {min_cell_count}"
+			self.delete_query(query_x, suppress_message=True)
+			self.delete_query(query_obs, suppress_message=True)
+			print(f"Cells with total counts less than {min_cell_count} removed")
+		elif min_cell_count is None and max_cell_count >= 0:
+			query_x = f"DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE total_counts > {max_cell_count})"
+			query_obs = f"DELETE FROM obs WHERE total_counts > {max_cell_count}"
+			self.delete_query(query_x, suppress_message=True)
+			self.delete_query(query_obs, suppress_message=True)
+			print(f"Cells with total counts greater than {max_cell_count} removed")
+		elif min_cell_count >= 0 and max_cell_count >= 0:
+			query_x = f"DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE total_counts < {min_cell_count} OR total_counts > {max_cell_count})"
+			query_obs = f"DELETE FROM obs WHERE total_counts < {min_cell_count} OR total_counts > {max_cell_count}"
+			self.delete_query(query_x, suppress_message=True)
+			self.delete_query(query_obs, suppress_message=True)
+			print(f"Cells with total counts less than {min_cell_count} and greater than {max_cell_count} removed")
