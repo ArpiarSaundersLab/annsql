@@ -46,15 +46,15 @@ for i in dataset_sizes:
 	adata.obs = adata.obs.drop(columns=["group","has_program","program_usage","libsize"])
 
 	#save the object
-	adata.write("../data/random_data_"+str(i)+".h5ad")
+	adata.write("../data//splatter/data_"+str(i)+".h5ad")
 
 	#open the object
-	adata = sc.read("../data/random_data_"+str(i)+".h5ad", backed="r")
+	adata = sc.read("../data/splatter/data_"+str(i)+".h5ad", backed="r")
 
 	#make the database using backed mode
-	os.system(f"rm ../db/random_data_{i}.asql")
+	os.system(f"rm ../db/splatter/data_{i}.asql")
 	start_time = time.time()
-	MakeDb(adata, db_path="../db/", db_name="random_data_"+str(i), create_all_indexes=False, convenience_view=False)
+	MakeDb(adata, db_path="../db/splatter/", db_name="splatter_data_"+str(i), create_all_indexes=False, convenience_view=False)
 	print("--- %s seconds ---" % (time.time() - start_time))
 
 	#clear mem

@@ -2,6 +2,7 @@ data/
 db/
 env/
 __pycache__/
+rdata/
 
 
 *.pyc

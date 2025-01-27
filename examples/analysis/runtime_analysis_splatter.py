@@ -1,6 +1,3 @@
-#NOTE: This script is different from runtime_analysis.py in that 
-# it doesn't wrap the AnnData filter in a pandas DataFrame.
-
 import scanpy as sc
 from AnnSQL import AnnSQL
 import time
@@ -8,27 +5,30 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from memory_profiler import memory_usage
 import os
 import gc
 
+data_path = "../data/random/"
+db_path = "../db/random/"
 in_memory_high_filter = 100001
 comparison_records = []
 dataset_sizes = [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 75000, 100000, 250000]
 
 for i in dataset_sizes:
-	if not os.path.exists("../data/random_data_" + str(i) + ".h5ad"):
+	if not os.path.exists(data_path+"data_" + str(i) + ".h5ad"):
 		continue
 
 	print(f"Running for {i}")
 
 	#in-memory vs non-backed
 	if i <= in_memory_high_filter:
-		adata_memory = sc.read("../data/random_data_" + str(i) + ".h5ad")
-		adata_sql_memory = AnnSQL(adata="../data/random_data_" + str(i) + ".h5ad")
+		adata_memory = sc.read(data_path+"data_" + str(i) + ".h5ad")
+		adata_sql_memory = AnnSQL(adata=data_path+"data_" + str(i) + ".h5ad")
 
 	#on-disk vs backed
-	adata_disk = sc.read("../data/random_data_" + str(i) + ".h5ad", backed="r")
-	adata_sql_disk = AnnSQL(db="../db/random_data_" + str(i) + ".asql")
+	adata_disk = sc.read(data_path+"data_" + str(i) + ".h5ad", backed="r")
+	adata_sql_disk = AnnSQL(db=db_path+"data_" + str(i) + ".asql")
 
 	####################################################################################
 	# COMPARISON 1 Simple Filter
@@ -323,6 +323,8 @@ for i in dataset_sizes:
 	adata_sql_disk = None
 	gc.collect()
 
+#file name
+file_name = "../results/comparisons_splatter.csv"
 
 # Convert the list to DataFrame after the loop
 comparisons = pd.DataFrame(comparison_records, columns=["size", "type", "runtime", "filter"])
@@ -340,10 +342,10 @@ comparisons['size_log'] = np.log(comparisons['size'])
 comparisons['size_log10'] = np.log10(comparisons['size'])
 
 #store the data
-comparisons.to_csv("../results/comparisons_2.csv", index=False)
+comparisons.to_csv(file_name, index=False)
 
 #load the data
-comparisons = pd.read_csv("../results/comparisons_2.csv")
+comparisons = pd.read_csv(file)
 
 #set the colors of the plots (ansql1, anndata in-mem, ansql2, anndata backed)
 colors = ["#07b88e", "#a4a6a4", "#07b88e", "#a4a6a4"]

@@ -5,27 +5,30 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from memory_profiler import memory_usage
 import os
 import gc
 
+data_path = "../data/random/"
+db_path = "../db/random/"
 in_memory_high_filter = 100001
 comparison_records = []
 dataset_sizes = [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 75000, 100000, 250000]
 
 for i in dataset_sizes:
-	if not os.path.exists("../data/random_data_" + str(i) + ".h5ad"):
+	if not os.path.exists(data_path+"data_" + str(i) + ".h5ad"):
 		continue
 
 	print(f"Running for {i}")
 
 	#in-memory vs non-backed
 	if i <= in_memory_high_filter:
-		adata_memory = sc.read("../data/random_data_" + str(i) + ".h5ad")
-		adata_sql_memory = AnnSQL(adata="../data/random_data_" + str(i) + ".h5ad")
+		adata_memory = sc.read(data_path+"data_" + str(i) + ".h5ad")
+		adata_sql_memory = AnnSQL(adata=data_path+"data_" + str(i) + ".h5ad")
 
 	#on-disk vs backed
-	adata_disk = sc.read("../data/random_data_" + str(i) + ".h5ad", backed="r")
-	adata_sql_disk = AnnSQL(db="../db/random_data_" + str(i) + ".asql")
+	adata_disk = sc.read(data_path+"data_" + str(i) + ".h5ad", backed="r")
+	adata_sql_disk = AnnSQL(db=db_path+"data_" + str(i) + ".asql")
 
 	####################################################################################
 	# COMPARISON 1 Simple Filter
@@ -41,9 +44,8 @@ for i in dataset_sizes:
 		print(f"memory annsql filter 1: {time1} seconds")
 
 		#memory AnnData approach
-		# Why wrap in pd.DataFrame? AnnSQL returns a DataFrame, so we attempt to compare apples to apples
 		start_time = time.time()
-		pd.DataFrame(adata_memory[adata_memory[:, "gene_1"].X > 0.5, "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[adata_memory[:, "gene_1"].X > 0.5, "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 1: {time2} seconds")
 
@@ -59,7 +61,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[adata_disk[:, "gene_1"].X > 0.5, "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[adata_disk[:, "gene_1"].X > 0.5, "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 1: {time4} seconds")
 
@@ -81,7 +83,7 @@ for i in dataset_sizes:
 
 		#memory AnnData approach
 		start_time = time.time()
-		pd.DataFrame(adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5), "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 2: {time2} seconds")
 
@@ -98,7 +100,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5), "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 2: {time4} seconds")
 
@@ -119,7 +121,7 @@ for i in dataset_sizes:
 
 		#memory AnnData approach
 		start_time = time.time()
-		pd.DataFrame(adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5), "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5), "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 3: {time2} seconds")
 
@@ -135,7 +137,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5), "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5), "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 3: {time4} seconds")
 
@@ -157,7 +159,7 @@ for i in dataset_sizes:
 
 		#memory AnnData approach
 		start_time = time.time()
-		pd.DataFrame(adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5) & (adata_memory[:, "gene_4"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+		adata_memory[(adata_memory[:, "gene_1"].X > 0.5) & (adata_memory[:, "gene_2"].X < 0.5) & (adata_memory[:, "gene_3"].X > 0.5) & (adata_memory[:, "gene_4"].X < 0.5), "gene_1"].X[:5]
 		time2 = time.time() - start_time
 		print(f"memory annData filter 4: {time2} seconds")
 
@@ -173,7 +175,7 @@ for i in dataset_sizes:
 
 	#disk AnnData approach
 	start_time = time.time()
-	pd.DataFrame(adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5) & (adata_disk[:, "gene_4"].X < 0.5), "gene_1"].X[:5], columns=["gene_1"])
+	adata_disk[(adata_disk[:, "gene_1"].X > 0.5) & (adata_disk[:, "gene_2"].X < 0.5) & (adata_disk[:, "gene_3"].X > 0.5) & (adata_disk[:, "gene_4"].X < 0.5), "gene_1"].X[:5]
 	time4 = time.time() - start_time
 	print(f"disk annData filter 4: {time4} seconds")
 
@@ -321,6 +323,8 @@ for i in dataset_sizes:
 	adata_sql_disk = None
 	gc.collect()
 
+#file name
+file_name = "../results/comparisons_random.csv"
 
 # Convert the list to DataFrame after the loop
 comparisons = pd.DataFrame(comparison_records, columns=["size", "type", "runtime", "filter"])
@@ -338,10 +342,10 @@ comparisons['size_log'] = np.log(comparisons['size'])
 comparisons['size_log10'] = np.log10(comparisons['size'])
 
 #store the data
-comparisons.to_csv("../results/comparisons.csv", index=False)
+comparisons.to_csv(file_name, index=False)
 
 #load the data
-comparisons = pd.read_csv("../results/comparisons.csv")
+comparisons = pd.read_csv(file)
 
 #set the colors of the plots (ansql1, anndata in-mem, ansql2, anndata backed)
 colors = ["#07b88e", "#a4a6a4", "#07b88e", "#a4a6a4"]
