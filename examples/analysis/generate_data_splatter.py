@@ -14,6 +14,7 @@ from scsim import scsim
 
 #dataset sizes to generate
 dataset_sizes = [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 75000, 100000, 250000]
+dataset_sizes = [9999]
 
 #iterates and creates data_sizes defined above
 for i in dataset_sizes:

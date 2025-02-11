@@ -7,7 +7,7 @@ import logging
 import os 
 
 class AnnSQL:
-	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		"""
 		Initializes an instance of the AnnSQL class. This class is used to query and update a database created from an AnnData object. 
 		it also provides methods for data normalization and transformation. The in-process database engine is DuckDB AND the database is 
@@ -19,6 +19,7 @@ class AnnSQL:
 			- db (str or None): The path to an existing database file. 
 			- create_all_indexes (bool): Whether to create indexes for all columns in the database. Memory intensive. Default is False.
 			- create_basic_indexes (bool): Whether to create indexes for basic columns. Default is False.
+			- print_output (bool): Whether to print output messages for in-memory database creation. Default is False.
 			- layers (list): A list of layer names to be stored in the database. Default is ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"].
 		Returns:
 			None
@@ -30,6 +31,7 @@ class AnnSQL:
 		self.layers = layers
 		self.validate_params()
 		self.is_open = False
+		self.print_output = print_output
 		if self.db is None:
 			self.build_db()
 		else:
@@ -63,7 +65,7 @@ class AnnSQL:
 
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
-		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers)
+		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers, print_output=self.print_output)
 		self.conn = db.conn
 
 	def query(self, query, return_type='pandas'):
@@ -413,3 +415,22 @@ class AnnSQL:
 			self.delete_query(query_x, suppress_message=True)
 			self.delete_query(query_obs, suppress_message=True)
 			print(f"Cells with total counts less than {min_cell_count} and greater than {max_cell_count} removed")
+
+	
+
+
+	def calculate_pca(self, n_components=50, table_name="X"):
+		#save to obs_X_pca with structure: (cell_id, pca1, pca2, pca3, ...)
+		#1. Standardize the data
+		#2. Calculate the covariance matrix
+		#3. Calculate the eigenvalues and eigenvectors
+		#4. Sort the eigenvalues and eigenvectors in descending order
+		#5. Select the top n_components eigenvectors
+		#6. Print the variance explained by each component
+
+
+		
+		#7. Save the result to the database
+
+
+		return True

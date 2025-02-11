@@ -5,7 +5,7 @@ library(anndata)
 # Define the file increments
 n_cells <- c("1000", "5000", "10000", "15000", "20000", "25000", "30000", "35000", "40000", "45000", "50000", "75000", "100000", "250000")
 
-Iterate splatter data and convert to Seurat
+#Iterate splatter data and convert to Seurat
 for (i in n_cells) {
 	print(i)
 	h5ad_file <- paste0("/home/kenny/Documents/OHSU/Projects/AnnSql/examples/data/splatter/data_", i, ".h5ad")

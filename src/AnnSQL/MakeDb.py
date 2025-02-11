@@ -5,7 +5,7 @@ import duckdb
 import os 
 
 class MakeDb:
-	def __init__(self, adata=None, 	db_name=None, db_path="db/", create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,make_buffer_file=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, adata=None, 	db_name=None, db_path="db/", create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,make_buffer_file=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], print_output=True):
 		"""
 		Initializes the MakeDb object. This object is used to create a database from an AnnData object.
 
@@ -33,6 +33,7 @@ class MakeDb:
 		self.convenience_view = convenience_view
 		self.chunk_size = chunk_size
 		self.make_buffer_file = make_buffer_file
+		self.print_output = print_output
 		self.validate_params()
 		self.build_db()
 
@@ -55,5 +56,5 @@ class MakeDb:
 
 	def build_db(self):
 		self.create_db()
-		BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, convenience_view=self.convenience_view, layers=self.layers, chunk_size=self.chunk_size, db_path=self.db_path, db_name=self.db_name, make_buffer_file=self.make_buffer_file)
+		BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, convenience_view=self.convenience_view, layers=self.layers, chunk_size=self.chunk_size, db_path=self.db_path, db_name=self.db_name, make_buffer_file=self.make_buffer_file, print_output=self.print_output)
 		self.conn.close()
