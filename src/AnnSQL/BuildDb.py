@@ -163,14 +163,6 @@ class BuildDb:
 		else:
 			if "X" in self.layers:
 				start_time = time.time()
-				# X_df = self.adata.to_df()
-				# X_df = X_df.reset_index(level=0,inplace=True)
-				# X_df.columns = ['cell_id'] + list(var_names_clean)
-				# self.conn.execute("BEGIN TRANSACTION;")
-				# self.conn.execute("SET preserve_insertion_order = false;")
-				# self.conn.execute("INSERT INTO X SELECT * FROM X_df;")
-				# self.conn.execute("COMMIT;")
-				#del X_df
 
 				#is this an in-memory database?
 				if self.db_path == None:
@@ -181,6 +173,16 @@ class BuildDb:
 					self.conn.execute("SET preserve_insertion_order = false;")
 					self.conn.execute("INSERT INTO X SELECT * FROM X_df")
 					self.conn.execute("COMMIT;")
+
+					# X_df = self.adata.to_df()
+					# X_df = X_df.reset_index(level=0,inplace=True)
+					# X_df.columns = ['cell_id'] + list(var_names_clean)
+					# self.conn.execute("BEGIN TRANSACTION;")
+					# self.conn.execute("SET preserve_insertion_order = false;")
+					# self.conn.execute("INSERT INTO X SELECT * FROM X_df;")
+					# self.conn.execute("COMMIT;")
+					# #del X_df
+
 
 				end_time = time.time()
 				gc.collect()

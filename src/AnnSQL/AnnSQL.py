@@ -1,9 +1,12 @@
 from .BuildDb import BuildDb
 import scanpy as sc
 import pandas as pd
+import numpy as np
+from numpy.linalg import eig
 import duckdb
 import warnings
 import logging
+import time
 import os 
 
 class AnnSQL:
@@ -259,7 +262,7 @@ class AnnSQL:
 		self.conn.execute("DROP VIEW IF EXISTS gene_counts_df")
 		print("Gene Counts Calculation Complete")
 
-	def calculate_variable_genes(self, chunk_size=100, print_progress=False, gene_field="gene_names"):
+	def calculate_variable_genes(self, chunk_size=100, print_progress=False, gene_field="gene_names", save_var_names=True,save_top_variable_genes=2000):
 		self.check_chunk_size(chunk_size)
 		gene_names_df = self.query(f"SELECT {gene_field} FROM var")
 		gene_names_df["variance"] = 0.0		
@@ -299,6 +302,10 @@ class AnnSQL:
 		self.conn.execute(f"CREATE TABLE variance_df AS SELECT * FROM variance_df")
 		self.conn.execute(f"UPDATE var SET variance = (SELECT variance FROM variance_df WHERE var.{gene_field} = variance_df.{gene_field})")
 		self.conn.execute("DROP VIEW IF EXISTS variance_df")
+
+		if save_var_names == True:
+			self.save_highly_variable_genes(top_variable_genes=save_top_variable_genes)
+
 		print("Variance Calculation Complete")
 
 
@@ -416,21 +423,236 @@ class AnnSQL:
 			self.delete_query(query_obs, suppress_message=True)
 			print(f"Cells with total counts less than {min_cell_count} and greater than {max_cell_count} removed")
 
-	
+
+	def calculate_pca(self, n_pcs=50, 
+						table_name="X", 
+						chunk_size=100, 
+						print_progress=False, 
+						zero_center=False, 
+						top_variable_genes=1000
+					):
+		
+		#check if the table exists
+		if table_name not in self.show_tables()['table_name'].tolist():
+			raise ValueError(f"{table_name} table not found. Run calculate_variable_genes and save_highly_variable_genes() first")
+
+		print("PCA Calculation Started")
+
+		#create table with structure (cell_id, gene, value)
+		self.query_raw("DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id STRING, gene STRING, value DOUBLE);")
+
+		#get all the gene names
+		genes = self.query("SELECT gene_names FROM var")
+		genes = genes['gene_names'].tolist()
+		genes = genes[:top_variable_genes]
+
+		#build the query
+		if zero_center == True: 
+			query_parts = [
+				f"SELECT cell_id, '{gene}' AS gene, ( {gene} - AVG({gene}) OVER () ) / STDDEV({gene}) OVER () AS value FROM {table_name}"
+				for gene in genes
+			]
+		else:
+			query_parts = [
+				f"SELECT cell_id, '{gene}' AS gene, {gene} - AVG({gene}) OVER () AS value FROM X"
+				for gene in genes
+			]
+
+		#iterate query in a loop and print chunks
+		for i in range(0, len(query_parts), chunk_size):
+			print("Standardize Chunk", i, "of", len(genes))
+			full_query = "INSERT INTO X_standard " + " UNION ALL ".join(query_parts[i:i+chunk_size])
+			self.query_raw(full_query)
+
+		#create a new table for covariance
+		self.query_raw("DROP TABLE IF EXISTS X_covariance; CREATE TABLE X_covariance (gene1 STRING, gene2 STRING, value DOUBLE);")
+
+		#convert the list to a string
+		genes_str = ', '.join([f"'{gene}'" for gene in genes])
+
+		#insert the covariance values
+		self.query_raw(f"""
+		INSERT INTO X_covariance
+		SELECT 
+			x.gene AS gene_1,
+			y.gene AS gene_2,
+			covar_samp(x.value, y.value) AS covariance
+		FROM X_standard x
+		JOIN X_standard y 
+			ON x.cell_id = y.cell_id  -- Match cells
+		WHERE x.gene IN ({', '.join([f"'{gene}'" for gene in genes])}) 
+		AND y.gene IN ({', '.join([f"'{gene}'" for gene in genes])}) 
+		/* AND x.gene <= y.gene */
+		GROUP BY x.gene, y.gene;
+		""")
+
+		#take a look at the covariance
+		cov_df = self.query("SELECT * FROM X_covariance ORDER BY gene1, gene2")
+		cov_df = cov_df.sort_values(by=['gene1', 'gene2'])
+
+		#pivots and create square covar matrix. (small matrix, okay as df)
+		cov_matrix = cov_df.pivot(index="gene1", columns="gene2", values="value").fillna(0)
+
+		#convert to np (small matrix, okay to represent as numpy)
+		cov_matrix_np = cov_matrix.to_numpy()
+
+		#compute the eigenvectors and eigenvalues
+		eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix_np)
+		sorted_idx = np.argsort(eigenvalues)[::-1] #sort in descending order
+		eigenvalues_sorted = eigenvalues[sorted_idx]
+		eigenvectors_sorted = eigenvectors[:, sorted_idx]
+
+		#df for loadings: one row per gene for each of the top n_pcs PCs.
+		pc_loading_rows = []
+		for gene_idx, gene in enumerate(genes):
+			for pc in range(n_pcs):
+				pc_loading_rows.append({
+					"gene": gene,
+					"pc": pc,
+					"loading": eigenvectors_sorted[gene_idx, pc]
+				})
+
+		#save the pc loadings to a dataframe
+		pc_loadings_df = pd.DataFrame(pc_loading_rows)
+
+		#insert loadings to PC_loadings table 
+		self.query_raw("DROP TABLE IF EXISTS PC_loadings;")
+		self.query_raw("CREATE TABLE PC_loadings (gene STRING, pc INT, loading DOUBLE);")
+		values_list = []
+		for idx, row in pc_loadings_df.iterrows():
+			gene_val = row["gene"].replace("'", "''")
+			values_list.append(f"('{gene_val}', {int(row['pc'])}, {float(row['loading'])})")
+
+		values_str = ", ".join(values_list)
+		insert_sql = f"INSERT INTO PC_loadings (gene, pc, loading) VALUES {values_str};"
+		self.query_raw(insert_sql)
 
 
-	def calculate_pca(self, n_components=50, table_name="X"):
-		#save to obs_X_pca with structure: (cell_id, pca1, pca2, pca3, ...)
-		#1. Standardize the data
-		#2. Calculate the covariance matrix
-		#3. Calculate the eigenvalues and eigenvectors
-		#4. Sort the eigenvalues and eigenvectors in descending order
-		#5. Select the top n_components eigenvectors
-		#6. Print the variance explained by each component
+		#temp buffer table to reduce memory usage
+		self.query_raw("DROP TABLE IF EXISTS PC_scores_temp;")
+		self.query_raw("CREATE TABLE PC_scores_temp (cell_id STRING, pc INT, partial_score DOUBLE);")
+
+		#process genes in chunks
+		for i in range(0, len(genes), chunk_size):
+			chunk_genes = genes[i:i+chunk_size]
+			genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
+			
+			dot_product_chunk_query = f"""
+			SELECT 
+				X.cell_id,
+				P.pc,
+				SUM(X.value * P.loading) AS partial_score
+			FROM X_standard X
+			JOIN PC_loadings P ON X.gene = P.gene
+			WHERE X.gene IN ({genes_clause})
+			GROUP BY X.cell_id, P.pc
+			ORDER BY X.cell_id, P.pc;
+			"""
+
+			#add partial results into the temp
+			self.query_raw(f"INSERT INTO PC_scores_temp {dot_product_chunk_query}")
+			print(f"Calc PCs Chunk {i} of {len(genes)}")
+
+		#pull it all together
+		self.query_raw("DROP TABLE IF EXISTS PC_scores;")
+		self.query_raw("""
+			CREATE TABLE PC_scores AS
+				SELECT cell_id, pc, SUM(partial_score) AS pc_score FROM PC_scores_temp
+			GROUP BY cell_id, pc
+			ORDER BY cell_id, pc;
+			""")
+
+		#drop temp table
+		self.query_raw("DROP TABLE PC_scores_temp;")
+
+		print(f"PCA Calculation Complete\nCheck the PC_scores table for results. \nAlternatively, use method return_pca_scores_matrix df")
+
+	def save_highly_variable_genes(self, top_variable_genes=1000):
+		genes = self.query(f"SELECT gene_names FROM var ORDER BY variance DESC LIMIT {top_variable_genes}")
+		genes = genes['gene_names'].tolist()
+
+		query = f"""
+		CREATE TABLE X_buffer AS
+		SELECT cell_id, {', '.join(genes)}
+		FROM X;
+		"""
+		self.query_raw(query)
+		self.query_raw(f"DROP TABLE IF EXISTS X;")
+		self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
+		self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'"{gene}"' for gene in genes])});")
+		
+		print(f"X table updated with only HV genes.")
+
+
+	def filter_by_gene_counts(self, min_gene_counts=None, max_gene_counts=None):
+
+		if min_gene_counts != None and max_gene_counts == None:
+			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts >= {min_gene_counts}")
+			genes = genes['gene_names'].tolist()
+			
+			query = f"""
+			CREATE TABLE X_buffer AS
+			SELECT cell_id, {', '.join(genes)}
+			FROM X;
+			"""
+			self.query_raw(query)
+			self.query_raw(f"DROP TABLE IF EXISTS X;")
+			self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
+			self.query_raw(f"DELETE FROM var WHERE gene_counts <= {min_gene_counts};")
+			print(f"Removed genes with less than {min_gene_counts} from X table.")
+
+		elif min_gene_counts != None and max_gene_counts != None:
+			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts >= {min_gene_counts} AND gene_counts <= {max_gene_counts}")
+			genes = genes['gene_names'].tolist()
+			
+			query = f"""
+			CREATE TABLE X_buffer AS
+			SELECT cell_id, {', '.join(genes)}
+			FROM X;
+			"""
+			self.query_raw(query)
+			self.query_raw(f"DROP TABLE IF EXISTS X;")
+			self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
+			self.query_raw(f"DELETE FROM var WHERE gene_counts <= {min_gene_counts} OR gene_counts >= {max_gene_counts};")
+			print(f"Removed genes with less than {min_gene_counts} and greater than {max_gene_counts} from X table.")
 
 
 		
-		#7. Save the result to the database
+	def return_pca_scores_matrix(self):		
+		if 'PC_scores' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('PC_scores table not found. Run calculate_pca() first')
+
+		return self.query("SELECT * FROM PC_scores").pivot(index="cell_id", columns="pc", values="pc_score").fillna(0)
 
 
+	def save_raw(self, table_name="X_raw"):
+		self.query_raw(f"DROP TABLE IF EXISTS X_raw;")
+		self.query_raw(f"CREATE TABLE X_raw AS SELECT * FROM X;")
+		print("X_raw table created from X.")
+
+	def raw_to_X(self, table_name="X_raw"):
+		self.query_raw(f"DROP TABLE IF EXISTS X;")
+		self.query_raw(f"ALTER TABLE {table_name} RENAME TO X;")
+
+		#empy the var table
+		self.query_raw("DELETE FROM var;")
+
+		#insert the columns gene_names and gene_names_orig 
+
+		
+
+
+
+		print("X table created from X_raw. Please note: X_raw table has been deleted.")
+
+	def pca_variance_explained(self, plot=False, print=False):
+		return True
+
+	def leiden_clustering(self, resolution=1.0, n_neighbors=30, table_name="X"):
+		return True
+
+	def plot_umap(self, table_name="X", genes=None, observations=None):
+		return True
+
+	def add_observation(self, obs_key, obs_value):
 		return True
