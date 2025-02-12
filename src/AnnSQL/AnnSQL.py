@@ -640,13 +640,16 @@ class AnnSQL:
 		#get all of the column names from the X table
 		columns = self.query("DESCRIBE X")[1:]["column_name"].tolist()
 		
+		#insert the gene names into the var table
 		values = [f"('{col}', '{col}')" for col in columns if col != "cell_id"]
 
 		if values:
 			query = f"INSERT INTO var (gene_names, gene_names_orig) VALUES {', '.join(values)};"
 			self.query_raw(query)
 
-
+		#we need to reset the obs table as well
+		self.query_raw("DELETE FROM obs;")
+		self.query_raw("INSERT INTO obs (cell_id) SELECT cell_id FROM X;")
 
 		print("X table created from X_raw. Please note: X_raw table has been deleted.")
 
