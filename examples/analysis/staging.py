@@ -16,13 +16,14 @@ from memory_profiler import memory_usage
 warnings.filterwarnings('ignore')
 
 
-# filepath = "../data/splatter/data_5000.h5ad"
-# adata = sc.read_h5ad(filepath)
-# MakeDb(adata=adata, db_name="data_5000", db_path="../db")
+filepath = "../data/splatter/data_5000.h5ad"
+adata = sc.read_h5ad(filepath)
+MakeDb(adata=adata, db_name="data_5000", db_path="../db")
 
 
 asql = AnnSQL(db="../db/data_5000.asql")
 asql.save_raw()
+asql.raw_to_X()
 asql.show_tables()
 asql.calculate_total_counts(chunk_size=500,print_progress=True)
 sns.violinplot(x="total_counts", data=asql.query("SELECT total_counts FROM obs"))
@@ -34,8 +35,8 @@ asql.filter_by_gene_counts(min_gene_counts=100, max_gene_counts=10000)
 sns.violinplot(data=asql.query("SELECT gene_counts FROM var"))
 asql.calculate_variable_genes(chunk_size=500, print_progress=True, save_var_names=True, save_top_variable_genes=2000)
 
-asql.raw_to_X()
 asql.query("SELECT * FROM var")
+asql.query("SELECT * FROM X")
 
 asql.calculate_pca(n_pcs=25, top_variable_genes=2000, chunk_size=500, print_progress=True, zero_center=False)
 pca_scores = asql.return_pca_scores_matrix()

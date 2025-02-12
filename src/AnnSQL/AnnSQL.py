@@ -579,8 +579,8 @@ class AnnSQL:
 		self.query_raw(query)
 		self.query_raw(f"DROP TABLE IF EXISTS X;")
 		self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
-		self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'"{gene}"' for gene in genes])});")
-		
+		#self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'"{gene}"' for gene in genes])});")
+		self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'\'{gene}\'' for gene in genes])});")
 		print(f"X table updated with only HV genes.")
 
 
@@ -637,9 +637,14 @@ class AnnSQL:
 		#empy the var table
 		self.query_raw("DELETE FROM var;")
 
-		#insert the columns gene_names and gene_names_orig 
-
+		#get all of the column names from the X table
+		columns = self.query("DESCRIBE X")[1:]["column_name"].tolist()
 		
+		values = [f"('{col}', '{col}')" for col in columns if col != "cell_id"]
+
+		if values:
+			query = f"INSERT INTO var (gene_names, gene_names_orig) VALUES {', '.join(values)};"
+			self.query_raw(query)
 
 
 
