@@ -151,12 +151,13 @@ class AnnSQL:
 	def replace_special_chars(self, string):
 		return string.replace("-", "_").replace(".", "_")
 
-	def expression_normalize(self, total_counts_per_cell=1e4, chunk_size=200, print_progress=False):
+	def expression_normalize(self, total_counts_per_cell=10000, chunk_size=200, print_progress=False):
 		self.check_chunk_size(chunk_size)
-		if 'total_counts' not in self.query("SELECT * FROM X LIMIT 1").columns:
-			print("Total counts not found...")
-			self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
-		
+		# if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+		# 	print("Total counts not found...")
+		# 	self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
+		self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
+
 		print("Expression Normalization Started")
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
 		if 'total_counts' in gene_names:
@@ -429,7 +430,7 @@ class AnnSQL:
 						chunk_size=100, 
 						print_progress=False, 
 						zero_center=False, 
-						top_variable_genes=1000
+						top_variable_genes=2000
 					):
 		
 		#check if the table exists
@@ -442,7 +443,7 @@ class AnnSQL:
 		self.query_raw("DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id STRING, gene STRING, value DOUBLE);")
 
 		#get all the gene names
-		genes = self.query("SELECT gene_names FROM var")
+		genes = self.query("SELECT gene_names FROM var ORDER BY variance DESC")
 		genes = genes['gene_names'].tolist()
 		genes = genes[:top_variable_genes]
 
@@ -454,7 +455,7 @@ class AnnSQL:
 			]
 		else:
 			query_parts = [
-				f"SELECT cell_id, '{gene}' AS gene, {gene} - AVG({gene}) OVER () AS value FROM X"
+				f"SELECT cell_id, '{gene}' AS gene, {gene} - AVG({gene}) OVER () AS value FROM {table_name}"
 				for gene in genes
 			]
 
@@ -492,6 +493,7 @@ class AnnSQL:
 
 		#pivots and create square covar matrix. (small matrix, okay as df)
 		cov_matrix = cov_df.pivot(index="gene1", columns="gene2", values="value").fillna(0)
+		cov_matrix = cov_matrix.reindex(index=genes, columns=genes).fillna(0)
 
 		#convert to np (small matrix, okay to represent as numpy)
 		cov_matrix_np = cov_matrix.to_numpy()
@@ -518,6 +520,7 @@ class AnnSQL:
 		#insert loadings to PC_loadings table 
 		self.query_raw("DROP TABLE IF EXISTS PC_loadings;")
 		self.query_raw("CREATE TABLE PC_loadings (gene STRING, pc INT, loading DOUBLE);")
+		
 		values_list = []
 		for idx, row in pc_loadings_df.iterrows():
 			gene_val = row["gene"].replace("'", "''")
@@ -587,7 +590,7 @@ class AnnSQL:
 	def filter_by_gene_counts(self, min_gene_counts=None, max_gene_counts=None):
 
 		if min_gene_counts != None and max_gene_counts == None:
-			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts >= {min_gene_counts}")
+			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts}")
 			genes = genes['gene_names'].tolist()
 			
 			query = f"""
@@ -602,9 +605,13 @@ class AnnSQL:
 			print(f"Removed genes with less than {min_gene_counts} from X table.")
 
 		elif min_gene_counts != None and max_gene_counts != None:
-			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts >= {min_gene_counts} AND gene_counts <= {max_gene_counts}")
+			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts} AND gene_counts < {max_gene_counts}")
 			genes = genes['gene_names'].tolist()
-			
+			print("genes:",str(len(genes)))
+			#check X columns for total_counts. We need to keep this column for meow
+			if 'total_counts' in self.query("SELECT * FROM X LIMIT 1").columns:
+				genes.append('total_counts')
+
 			query = f"""
 			CREATE TABLE X_buffer AS
 			SELECT cell_id, {', '.join(genes)}
