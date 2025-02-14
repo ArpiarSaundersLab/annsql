@@ -20,11 +20,11 @@ from AnnSQL.MakeDb import MakeDb
 # #make the db
 # filepath = "../data/splatter/data_5000_test.h5ad"
 # adata = sc.read_h5ad(filepath)
-# #os.remove("../db/data_5000.asql")
+# os.remove("../db/data_5000.asql")
 # MakeDb(adata=adata, db_name="data_5000", db_path="../db")
 
 #open the annsql database
-asql = AnnSQL(db="../db/data_1000.asql")
+asql = AnnSQL(db="../db/data_5000.asql")
 
 #save a raw matrix layer
 asql.save_raw()
@@ -60,30 +60,11 @@ asql.calculate_variable_genes(chunk_size=750, print_progress=True, save_var_name
 
 #determine principal components based on the top 2000 variable genes
 start_time = time.time()
-asql.calculate_pca_2(n_pcs=50, top_variable_genes=2000, chunk_size=750, print_progress=True, zero_center=False)
+asql.calculate_pca(n_pcs=50, top_variable_genes=2000, chunk_size=750, print_progress=True, zero_center=False, max_cells_memory_threshold=1000)
 print("Time to calculate PCA: ", time.time()-start_time)
 
 #convert the long form table pcs to a matrix for viewing (memory intensive)
 pca_scores = asql.return_pca_scores_matrix()
-
-#take a look at the main tables and the data
-asql.show_tables()
-asql.query("SELECT * FROM X_standard_wide")
-asql.query("SELECT * FROM X_standard")
-
-asql.query("PIVOT X_standard ON gene GROUP BY gene ORDER BY gene")
-asql.query("SELECT sum(value) OVER (PARTITION BY gene) FROM X_standard")
-asql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)")
-asql.query("SELECT covar_samp(gene_7917,COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X_standard_wide)")
-
-
-asql.query("PIVOT X_standard ON gene GROUP BY gene ORDER BY gene")
-asql.query("SELECT covar_samp(gene_4857,gene_4857) FROM  X_standard_wide")
-
-
-
-
-
 
 #plot the PCA
 sns.scatterplot(x=pca_scores[0], y=pca_scores[1],size=0.5)
@@ -91,35 +72,13 @@ plt.xlabel("PCA1")
 plt.ylabel("PCA2")
 
 
-##########################################################################################
-#compare the PCA to the scanpy PCA
-##########################################################################################
-filepath = "../data/splatter/data_1000_test.h5ad"
-adata = sc.read_h5ad(filepath)
 
-#qc the data
-sc.pp.calculate_qc_metrics(adata, inplace=True)
-
-#filter the data
-sc.pp.filter_cells(adata, min_counts=2000)
-sc.pp.filter_cells(adata, max_counts=15000)
-sc.pp.filter_genes(adata, min_counts=100)
-sc.pp.filter_genes(adata, max_counts=10000)
-
-#normalize the data
-sc.pp.normalize_total(adata, target_sum=10000)
-sc.pp.log1p(adata)
-
-#get all the genes that are highly variable from annsql
-genes = asql.query("SELECT gene_names FROM var ")
-
-#filter by the same genes in the genes	table
-adata = adata[:,genes["gene_names"]]
-
-#calculate the PCA
-sc.tl.pca(adata, n_comps=50, zero_center=False, svd_solver=None)
-
-#compare the PCA
-sns.scatterplot(x=adata.obsm["X_pca"][:,0], y=adata.obsm["X_pca"][:,1],size=0.5)
-plt.xlabel("PCA1")
-plt.ylabel("PCA2")
+#TODO
+#variance explained
+#calculate the nearest neighbors
+#leiden clustering
+#umap
+#plot the umap
+#update the obs table with annotations
+#differential expression
+#plot the differential expression as volcano
