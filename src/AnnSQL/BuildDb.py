@@ -1,5 +1,6 @@
 import scanpy as sc
 import pandas as pd
+import polars as pl
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -24,7 +25,7 @@ class BuildDb:
 		'set', 'table', 'then', 'to', 'true', 'union', 'unique', 'update', 'values', 'when', 'where'
 	]
 
-	def __init__(self, conn=None, db_path=None, db_name=None, adata=None, create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,	make_buffer_file=False,	layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, conn=None, db_path=None, db_name=None, adata=None, create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,	make_buffer_file=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
 		"""
 		Initializes the BuildDb object. This object is used to create a database from an AnnData object byway of the MakeDb object.
 
@@ -38,6 +39,7 @@ class BuildDb:
 			- convenience_view (optional): Flag indicating whether to create a convenience view.
 			- chunk_size (optional): Size of the chunks for processing the data.
 			- make_buffer_file (optional): Flag indicating whether to create a buffer file.
+			- print_output (optional): Flag indicating whether to print output.
 			- layers (optional): List of layers to include in the database.
 		Returns:
 			None
@@ -52,6 +54,7 @@ class BuildDb:
 		self.layers = layers
 		self.chunk_size = chunk_size
 		self.make_buffer_file = make_buffer_file
+		self.print_output = print_output
 		self.build()
 		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
@@ -96,7 +99,8 @@ class BuildDb:
 					unique_counter[var_names_upper.iloc[i][0] ] = 1
 					var_names[i] = var_names[i] + f"_{unique_counter[var_names_upper.iloc[i][0] ]}"
 		end_time = time.time()
-		print("Time to make var_names unique: ", end_time-start_time)
+		if self.print_output == True:
+			print("Time to make var_names unique: ", end_time-start_time)
 
 		#clean the column names for SQL
 		var_names_clean = [self.replace_special_chars(col) for col in var_names]
@@ -107,7 +111,8 @@ class BuildDb:
 		start_time = time.time()
 		self.conn.execute("CREATE TABLE X (cell_id VARCHAR,	{} )".format(', '.join([f"{self.replace_special_chars(col)} FLOAT" for col in var_names])))
 		end_time = time.time()
-		print("Time to create X table structure: ", end_time-start_time)
+		if self.print_output == True:
+			print("Time to create X table structure: ", end_time-start_time)
 		
 		#handles backed mode
 		if self.adata.isbacked:
@@ -149,8 +154,8 @@ class BuildDb:
 					self.conn.execute(f"INSERT INTO X SELECT * FROM read_parquet('{self.db_path}{self.db_name}_X.parquet')")
 					print(f"Time to create X table from buffer: {time.time()-start_time}")
 					os.remove(f"{self.db_path}{self.db_name}_X.parquet")
-
-				print(f"Finished inserting X data.")
+				if self.print_output == True:
+					print(f"Finished inserting X data.")
 
 			else:
 				print("Skipping X layer")
@@ -158,15 +163,31 @@ class BuildDb:
 		else:
 			if "X" in self.layers:
 				start_time = time.time()
-				X_df = self.adata.to_df()
-				X_df = X_df.reset_index()
-				X_df.columns = ['cell_id'] + list(var_names_clean)
-				self.conn.execute("BEGIN TRANSACTION;")
-				self.conn.execute("SET preserve_insertion_order = false;")
-				self.conn.execute("INSERT INTO X SELECT * FROM X_df;")
-				self.conn.execute("COMMIT;")
+
+				#is this an in-memory database?
+				if self.db_path == None:
+					self.conn.register("X", pl.DataFrame({"cell_id": self.adata.obs.index,**{name: self.adata.X[:, idx] for idx, name in enumerate(var_names_clean)}})) 
+				else:
+					X_df = self.conn.register("X_df", pl.DataFrame({"cell_id": self.adata.obs.index,**{name: self.adata.X[:, idx] for idx, name in enumerate(var_names_clean)}})) 
+					self.conn.execute("BEGIN TRANSACTION;")
+					self.conn.execute("SET preserve_insertion_order = false;")
+					self.conn.execute("INSERT INTO X SELECT * FROM X_df")
+					self.conn.execute("COMMIT;")
+
+					# X_df = self.adata.to_df()
+					# X_df = X_df.reset_index(level=0,inplace=True)
+					# X_df.columns = ['cell_id'] + list(var_names_clean)
+					# self.conn.execute("BEGIN TRANSACTION;")
+					# self.conn.execute("SET preserve_insertion_order = false;")
+					# self.conn.execute("INSERT INTO X SELECT * FROM X_df;")
+					# self.conn.execute("COMMIT;")
+					# #del X_df
+
+
 				end_time = time.time()
-				print("Time to insert X data: ", end_time-start_time )
+				gc.collect()
+				if self.print_output == True:
+					print("Time to insert X data: ", end_time-start_time )
 			else:
 				print("Skipping X layer")
 
@@ -176,7 +197,8 @@ class BuildDb:
 			self.conn.register('obs_df', obs_df)
 			self.conn.execute("CREATE TABLE obs AS SELECT * FROM obs_df")
 			self.conn.unregister('obs_df')
-			print("Finished inserting obs data")
+			if self.print_output == True:
+				print("Finished inserting obs data")
 		else:
 			print("Skipping obs layer")
 
@@ -184,7 +206,8 @@ class BuildDb:
 			self.conn.register('var_names_df', var_names_df)
 			self.conn.execute("CREATE TABLE var_names AS SELECT * FROM var_names_df")
 			self.conn.unregister('var_names_df')
-			print("Finished inserting var_names data")
+			if self.print_output == True:
+				print("Finished inserting var_names data")
 		else:
 			print("Skipping var_names layer")
 
@@ -199,7 +222,8 @@ class BuildDb:
 			self.conn.register('var_df', var)
 			self.conn.execute("CREATE TABLE var AS SELECT * FROM var_df")
 			self.conn.unregister('var_df')
-			print("Finished inserting var data")
+			if self.print_output == True:
+				print("Finished inserting var data")
 		else:
 			print("Skipping var layer")
 
@@ -209,7 +233,8 @@ class BuildDb:
 				self.conn.register(f'obsm_{key}_df', obsm_df)
 				self.conn.execute(f"CREATE TABLE obsm_{key} AS SELECT * FROM obsm_{key}_df")
 				self.conn.unregister(f'obsm_{key}_df')
-			print("Finished inserting obsm data")
+			if self.print_output == True:
+				print("Finished inserting obsm data")
 		else:
 			print("Skipping obsm layer")
 
@@ -220,7 +245,8 @@ class BuildDb:
 				self.conn.register(f'varm_{key}_df', varm_df)
 				self.conn.execute(f"CREATE TABLE varm_{key} AS SELECT * FROM varm_{key}_df")
 				self.conn.unregister(f'varm_{key}_df')
-			print("Finished inserting varm data")
+			if self.print_output == True:
+				print("Finished inserting varm data")
 		else:
 			print("Skipping varm layer")
 
@@ -230,7 +256,8 @@ class BuildDb:
 				self.conn.register(f'obsp_{key}_df', obsp_df)
 				self.conn.execute(f"CREATE TABLE obsp_{key} AS SELECT * FROM obsp_{key}_df")
 				self.conn.unregister(f'obsp_{key}_df')
-			print("Finished inserting obsp data")
+			if self.print_output == True:
+				print("Finished inserting obsp data")
 		else:
 			print("Skipping obsp layer")
 

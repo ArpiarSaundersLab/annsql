@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.2
 Name: AnnSQL
 Version: 0.9.9
 Summary: A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). 
@@ -16,6 +16,15 @@ Requires-Dist: duckdb>=1.1.2
 Requires-Dist: memory-profiler>=0.61.0
 Requires-Dist: psutil>=6.0.0
 Requires-Dist: pyarrow>=17.0.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
 <center><img src="examples/images/logo.png" width=500></center>
 <br />
@@ -325,7 +334,7 @@ asql.expression_log(log_type="LN", chunk_size=250)
 ## Citation
 AnnSQL: A Python SQL-based package for large-scale single-cell genomics analysis on a laptop<br />
 Kenny Pavan, Arpiar Saunders<br />
-bioRxiv 2024.11.02.621676; doi: https://doi.org/10.1101/2024.11.02.621676
+bioRxiv 2024.11.02.621676; [doi: https://doi.org/10.1101/2024.11.02.621676](https://www.biorxiv.org/content/10.1101/2024.11.02.621676)
 
 <br>
 <br>

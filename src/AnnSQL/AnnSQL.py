@@ -1,13 +1,16 @@
 from .BuildDb import BuildDb
 import scanpy as sc
 import pandas as pd
+import numpy as np
+from numpy.linalg import eig
 import duckdb
 import warnings
 import logging
+import time
 import os 
 
 class AnnSQL:
-	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], memory_limit=None):
 		"""
 		Initializes an instance of the AnnSQL class. This class is used to query and update a database created from an AnnData object. 
 		it also provides methods for data normalization and transformation. The in-process database engine is DuckDB AND the database is 
@@ -19,6 +22,7 @@ class AnnSQL:
 			- db (str or None): The path to an existing database file. 
 			- create_all_indexes (bool): Whether to create indexes for all columns in the database. Memory intensive. Default is False.
 			- create_basic_indexes (bool): Whether to create indexes for basic columns. Default is False.
+			- print_output (bool): Whether to print output messages for in-memory database creation. Default is False.
 			- layers (list): A list of layer names to be stored in the database. Default is ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"].
 		Returns:
 			None
@@ -30,6 +34,8 @@ class AnnSQL:
 		self.layers = layers
 		self.validate_params()
 		self.is_open = False
+		self.print_output = print_output
+		self.memory_limit = memory_limit
 		if self.db is None:
 			self.build_db()
 		else:
@@ -61,9 +67,14 @@ class AnnSQL:
 			self.conn.close()
 			self.is_open = False
 
+	def asql_register(self, table_name, df):
+		self.open_db()
+		self.conn.register(table_name, df)
+		self.close_db()
+
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
-		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers)
+		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers, print_output=self.print_output)
 		self.conn = db.conn
 
 	def query(self, query, return_type='pandas'):
@@ -73,6 +84,10 @@ class AnnSQL:
 			raise ValueError('UPDATE, DELETE, and INSERT detected. Please use update_query() instead')
 
 		self.open_db()
+
+		if self.memory_limit is not None:			
+			self.conn.execute(f"SET memory_limit = '{self.memory_limit}';")
+
 		if return_type == 'parquet' and 'SELECT' in query.upper():
 			query = "COPY ("+query+") TO 'output.parquet' (FORMAT PARQUET);"
 			self.conn.execute(query)
@@ -91,6 +106,8 @@ class AnnSQL:
 
 	def query_raw(self, query):
 		self.open_db()
+		if self.memory_limit is not None:			
+			self.conn.execute(f"SET memory_limit = '{self.memory_limit}';")
 		result = self.conn.execute(query)
 		self.close_db()
 		return result
@@ -108,7 +125,7 @@ class AnnSQL:
 			print("Update Query Error:", e)
 
 	def delete_query(self, query, suppress_message=False):
-		if 'SELECT' in query.upper() or 'UPDATE' in query.upper():
+		if 'DELETE' not in query.upper():
 			raise ValueError('SELECT detected. Please use query() instead')
 		try:
 			self.open_db()
@@ -146,12 +163,13 @@ class AnnSQL:
 	def replace_special_chars(self, string):
 		return string.replace("-", "_").replace(".", "_")
 
-	def expression_normalize(self, total_counts_per_cell=1e4, chunk_size=200, print_progress=False):
+	def expression_normalize(self, total_counts_per_cell=10000, chunk_size=200, print_progress=False):
 		self.check_chunk_size(chunk_size)
-		if 'total_counts' not in self.query("SELECT * FROM X LIMIT 1").columns:
-			print("Total counts not found...")
-			self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
-		
+		# if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+		# 	print("Total counts not found...")
+		# 	self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
+		self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
+
 		print("Expression Normalization Started")
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
 		if 'total_counts' in gene_names:
@@ -257,7 +275,7 @@ class AnnSQL:
 		self.conn.execute("DROP VIEW IF EXISTS gene_counts_df")
 		print("Gene Counts Calculation Complete")
 
-	def calculate_variable_genes(self, chunk_size=100, print_progress=False, gene_field="gene_names"):
+	def calculate_variable_genes(self, chunk_size=100, print_progress=False, gene_field="gene_names", save_var_names=True,save_top_variable_genes=2000):
 		self.check_chunk_size(chunk_size)
 		gene_names_df = self.query(f"SELECT {gene_field} FROM var")
 		gene_names_df["variance"] = 0.0		
@@ -297,6 +315,10 @@ class AnnSQL:
 		self.conn.execute(f"CREATE TABLE variance_df AS SELECT * FROM variance_df")
 		self.conn.execute(f"UPDATE var SET variance = (SELECT variance FROM variance_df WHERE var.{gene_field} = variance_df.{gene_field})")
 		self.conn.execute("DROP VIEW IF EXISTS variance_df")
+
+		if save_var_names == True:
+			self.save_highly_variable_genes(top_variable_genes=save_top_variable_genes)
+
 		print("Variance Calculation Complete")
 
 
@@ -390,3 +412,317 @@ class AnnSQL:
 	def check_chunk_size(self, chunk_size):
 		if chunk_size > 999:
 			raise ValueError('chunk_size must be less than 1000. DuckDb limitation')
+
+	def filter_by_cell_counts(self, min_cell_count=None, max_cell_count=None):
+		if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+			print("Total counts not found. Running total counts...")
+			self.calculate_total_counts()
+		if min_cell_count >= 0 and max_cell_count is None:
+			query_x = f"DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE total_counts < {min_cell_count})"
+			query_obs = f"DELETE FROM obs WHERE total_counts < {min_cell_count}"
+			self.delete_query(query_x, suppress_message=True)
+			self.delete_query(query_obs, suppress_message=True)
+			print(f"Cells with total counts less than {min_cell_count} removed")
+		elif min_cell_count is None and max_cell_count >= 0:
+			query_x = f"DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE total_counts > {max_cell_count})"
+			query_obs = f"DELETE FROM obs WHERE total_counts > {max_cell_count}"
+			self.delete_query(query_x, suppress_message=True)
+			self.delete_query(query_obs, suppress_message=True)
+			print(f"Cells with total counts greater than {max_cell_count} removed")
+		elif min_cell_count >= 0 and max_cell_count >= 0:
+			query_x = f"DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE total_counts < {min_cell_count} OR total_counts > {max_cell_count})"
+			query_obs = f"DELETE FROM obs WHERE total_counts < {min_cell_count} OR total_counts > {max_cell_count}"
+			self.delete_query(query_x, suppress_message=True)
+			self.delete_query(query_obs, suppress_message=True)
+			print(f"Cells with total counts less than {min_cell_count} and greater than {max_cell_count} removed")
+
+
+	def calculate_pca(self, n_pcs=50, 
+						table_name="X", 
+						chunk_size=100, 
+						print_progress=False, 
+						zero_center=False, 
+						top_variable_genes=2000,
+						max_cells_memory_threshold=500):
+
+		#does the table exist?
+		if table_name not in self.show_tables()['table_name'].tolist():
+			raise ValueError(f"{table_name} table not found.")
+		
+		#does the variance column exist?
+		if 'variance' not in self.query("SELECT * FROM var LIMIT 1").columns:
+			print("Variance not found. Running calculate_variable_genes...")
+			self.calculate_variable_genes(chunk_size=chunk_size, print_progress=print_progress, 
+										save_var_names=True, save_top_variable_genes=top_variable_genes)
+		
+		print("PCA Calculation Started\n")
+
+		#get the top genes to use
+		genes_df = self.query("SELECT gene_names FROM var ORDER BY variance DESC")
+		genes = genes_df['gene_names'].tolist()[:top_variable_genes]
+		
+		#build query for wide standardized table with two options for zero-centering
+		col_exprs = []
+		for gene in genes:
+			if zero_center:
+				expr = f"(({gene} - AVG({gene}) OVER ()) / STDDEV({gene}) OVER ()) AS {gene}"
+			else:
+				expr = f"({gene} - AVG({gene}) OVER ()) AS {gene}"
+			col_exprs.append(expr)
+		cols_sql = ", ".join(col_exprs)
+		
+		#insert the wide standardized table
+		self.query_raw("DROP TABLE IF EXISTS X_standard_wide;")
+		self.query_raw(f"CREATE TABLE X_standard_wide AS SELECT cell_id, {cols_sql} FROM {table_name};")
+
+		#if there's less than 10k cells in X_standard_wide use np.cov method. SQL method isn't as fast, but is more memory efficient.
+		if self.query("SELECT COUNT(*) as total FROM X_standard_wide")["total"][0] < max_cells_memory_threshold:
+			print("Using numpy method for covariance calculation")	
+		
+			#get the gene data
+			wide_df = self.query("SELECT * FROM X_standard_wide ORDER BY cell_id")
+			
+			#column order matters for covariance matrix
+			wide_df = wide_df[['cell_id'] + genes]
+			
+			#gene data as a numpy array.
+			gene_data = wide_df[genes].to_numpy()
+
+			#covariance matrix for the genes.
+			cov_matrix_np = np.cov(gene_data, rowvar=False)
+
+
+		else:
+
+			print("Using SQL method for covariance calculation")
+			
+			#pivot the wide table to long form
+			self.query_raw(f"DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id TEXT, gene TEXT, value DOUBLE);")
+			self.query_raw(f"INSERT INTO X_standard SELECT cell_id, gene, value	FROM X_standard_wide UNPIVOT (value FOR gene IN ({", ".join(genes)})) ORDER BY gene;")
+
+			#covariance matrix
+			self.query_raw("DROP TABLE IF EXISTS X_covariance; CREATE TABLE X_covariance (gene1 STRING, gene2 STRING, value DOUBLE);")
+
+			#insert the covariance values
+			for i in range(0, len(genes), chunk_size):
+				chunk_genes = genes[i:i+chunk_size]
+				genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
+				print(f"Covariance Chunk {i} of {len(genes)}")
+				self.query_raw(f"""
+				INSERT INTO X_covariance
+				SELECT 
+					x.gene AS gene_1,
+					y.gene AS gene_2,
+					covar_samp(x.value, y.value) AS covariance
+				FROM X_standard x
+				JOIN X_standard y 
+					ON x.cell_id = y.cell_id
+				WHERE x.gene <= y.gene AND x.gene IN ({genes_clause})
+				GROUP BY x.gene, y.gene;
+				""")
+			
+			#take a look at the covariance (small, select all should be okay)
+			cov_df = self.query("SELECT * FROM X_covariance ORDER BY gene1, gene2")
+			cov_df = cov_df.sort_values(by=['gene1', 'gene2'])
+
+			#pivots and create square covar matrix. (small matrix, okay as df)
+			cov_matrix = cov_df.pivot(index="gene1", columns="gene2", values="value").fillna(0)
+			cov_matrix = cov_matrix.reindex(index=genes, columns=genes).fillna(0)
+
+			#convert to np (small matrix, okay to represent as numpy)
+			cov_matrix_np = cov_matrix.to_numpy()
+
+		#use linalg.eigh for the eigenvalues and eigenvectors (cov matrix is small)
+		eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix_np)
+		sorted_idx = np.argsort(eigenvalues)[::-1]
+		eigenvalues_sorted = eigenvalues[sorted_idx]
+		eigenvectors_sorted = eigenvectors[:, sorted_idx][:, :n_pcs]  # take only top n_pcs
+		
+		#df for PC loadings
+		pc_loadings_df = pd.DataFrame({
+			"gene": np.repeat(genes, n_pcs),
+			"pc": np.tile(np.arange(n_pcs), len(genes)),
+			"loading": eigenvectors_sorted.flatten()
+		})
+		
+		#insert the loadings
+		self.query_raw("DROP TABLE IF EXISTS PC_loadings;")
+		self.open_db()
+		self.conn.execute("CREATE TABLE PC_loadings AS SELECT * FROM pc_loadings_df;")
+		self.close_db()
+		
+
+
+		#if there's less than 10k cells in X_standard_wide use np.dot method. SQL method isn't as fast, but is more memory efficient.
+		if self.query("SELECT COUNT(*) as total FROM X_standard_wide")["total"][0] < max_cells_memory_threshold:
+
+			#dot product of each cell's standardized gene vector with the loadings.
+			pc_scores = gene_data.dot(eigenvectors_sorted) 
+			
+			#long-form df for PC scores
+			cell_ids = wide_df['cell_id'].tolist()
+			pc_scores_list = []
+			n_cells = len(cell_ids)
+			for i in range(n_cells):
+				for pc in range(n_pcs):
+					pc_scores_list.append({
+						"cell_id": cell_ids[i],
+						"pc": pc,
+						"pc_score": pc_scores[i, pc]
+					})
+
+			pc_scores_df = pd.DataFrame(pc_scores_list)
+
+			#insert PC scores
+			self.query_raw("DROP TABLE IF EXISTS PC_scores;")
+			self.open_db()
+			self.conn.execute("CREATE TABLE PC_scores AS SELECT * FROM pc_scores_df;")
+			self.close_db()
+
+			
+		else:
+
+			#temp buffer table to reduce memory usage
+			self.query_raw("DROP TABLE IF EXISTS PC_scores_temp;")
+			self.query_raw("CREATE TABLE PC_scores_temp (cell_id STRING, pc INT, partial_score DOUBLE);")
+
+			#process genes in chunks
+			for i in range(0, len(genes), chunk_size):
+				chunk_genes = genes[i:i+chunk_size]
+				genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
+				dot_product_chunk_query = f"""
+				SELECT 
+					X.cell_id,
+					P.pc,
+					SUM(X.value * P.loading) AS partial_score
+				FROM X_standard X
+				JOIN PC_loadings P ON X.gene = P.gene
+				WHERE X.gene IN ({genes_clause})
+				GROUP BY X.cell_id, P.pc
+				ORDER BY X.cell_id, P.pc;
+				"""
+				#add partial results into the temp
+				self.query_raw(f"INSERT INTO PC_scores_temp {dot_product_chunk_query}")
+				print(f"PCs Chunk {i} of {len(genes)}")
+
+			#pull it all together
+			self.query_raw("DROP TABLE IF EXISTS PC_scores;")
+			self.query_raw("""
+				CREATE TABLE PC_scores AS
+					SELECT cell_id, pc, SUM(partial_score) AS pc_score FROM PC_scores_temp
+				GROUP BY cell_id, pc
+				ORDER BY cell_id, pc;
+				""")
+
+			#drop temp table
+			self.query_raw("DROP TABLE PC_scores_temp;")
+		
+		print("\nPCA Calculation Complete\n")
+			
+
+
+	def save_highly_variable_genes(self, top_variable_genes=1000):
+		genes = self.query(f"SELECT gene_names FROM var ORDER BY variance DESC LIMIT {top_variable_genes}")
+		genes = genes['gene_names'].tolist()
+
+		query = f"""
+		CREATE TABLE X_buffer AS
+		SELECT cell_id, {', '.join(genes)}
+		FROM X;
+		"""
+		self.query_raw(query)
+		self.query_raw(f"DROP TABLE IF EXISTS X;")
+		self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
+		#self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'"{gene}"' for gene in genes])});")
+		self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'\'{gene}\'' for gene in genes])});")
+		print(f"X table updated with only HV genes.")
+
+
+	def filter_by_gene_counts(self, min_gene_counts=None, max_gene_counts=None):
+
+		if min_gene_counts != None and max_gene_counts == None:
+			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts}")
+			genes = genes['gene_names'].tolist()
+			
+			query = f"""
+			CREATE TABLE X_buffer AS
+			SELECT cell_id, {', '.join(genes)}
+			FROM X;
+			"""
+			self.query_raw(query)
+			self.query_raw(f"DROP TABLE IF EXISTS X;")
+			self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
+			self.query_raw(f"DELETE FROM var WHERE gene_counts <= {min_gene_counts};")
+			print(f"Removed genes with less than {min_gene_counts} from X table.")
+
+		elif min_gene_counts != None and max_gene_counts != None:
+			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts} AND gene_counts < {max_gene_counts}")
+			genes = genes['gene_names'].tolist()
+			print("genes:",str(len(genes)))
+			#check X columns for total_counts. We need to keep this column for meow
+			if 'total_counts' in self.query("SELECT * FROM X LIMIT 1").columns:
+				genes.append('total_counts')
+
+			query = f"""
+			CREATE TABLE X_buffer AS
+			SELECT cell_id, {', '.join(genes)}
+			FROM X;
+			"""
+			self.query_raw(query)
+			self.query_raw(f"DROP TABLE IF EXISTS X;")
+			self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
+			self.query_raw(f"DELETE FROM var WHERE gene_counts <= {min_gene_counts} OR gene_counts >= {max_gene_counts};")
+			print(f"Removed genes with less than {min_gene_counts} and greater than {max_gene_counts} from X table.")
+
+		
+	def return_pca_scores_matrix(self):		
+		if 'PC_scores' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('PC_scores table not found. Run calculate_pca() first')
+
+		return self.query("SELECT * FROM PC_scores").pivot(index="cell_id", columns="pc", values="pc_score").fillna(0)
+
+	def save_raw(self, table_name="X_raw"):
+		self.query_raw(f"DROP TABLE IF EXISTS X_raw;")
+		self.query_raw(f"CREATE TABLE X_raw AS SELECT * FROM X;")
+		print("X_raw table created from X.")
+
+	def raw_to_X(self, table_name="X_raw"):
+		self.query_raw(f"DROP TABLE IF EXISTS X;")
+		self.query_raw(f"ALTER TABLE {table_name} RENAME TO X;")
+
+		#empy the var table
+		self.query_raw("DELETE FROM var;")
+
+		#get all of the column names from the X table
+		columns = self.query("DESCRIBE X")[1:]["column_name"].tolist()
+		
+		#insert the gene names into the var table
+		values = [f"('{col}', '{col}')" for col in columns if col != "cell_id"]
+
+		if values:
+			query = f"INSERT INTO var (gene_names, gene_names_orig) VALUES {', '.join(values)};"
+			self.query_raw(query)
+
+		#we need to reset the obs table as well
+		self.query_raw("DELETE FROM obs;")
+		self.query_raw("INSERT INTO obs (cell_id) SELECT cell_id FROM X;")
+
+		print("X table created from X_raw. Please note: X_raw table has been deleted.")
+
+	def pca_variance_explained(self, plot=False):
+		return True
+
+	def leiden_clustering(self, resolution=1.0, n_neighbors=30, table_name="X"):
+		return True
+
+	def plot_umap(self, table_name="X", genes=None, observations=None):
+		return True
+
+	def add_observation(self, obs_key, obs_value):
+		return True
+
+	def plot_highly_variable_genes(self):
+		return True
+
+	def write_adata(self, adata_path, table_to_layer_map=None):
+		return True

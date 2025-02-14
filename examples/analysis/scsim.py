@@ -96,7 +96,7 @@ class scsim:
         ## Select doublet cells and determine the second cell to merge with
         d_ind = sorted(np.random.choice(self.ncells, self.ndoublets,
                                         replace=False))
-        d_ind = ['Cell%d' % (x+1) for x in d_ind]
+        d_ind = ['cell_%d' % (x+1) for x in d_ind]
         self.cellparams['is_doublet'] = False
         self.cellparams.loc[d_ind, 'is_doublet'] = True
         extraind = self.cellparams.index[-self.ndoublets:]
@@ -198,7 +198,7 @@ class scsim:
         groupid = self.simulate_groups()
         libsize = np.random.lognormal(mean=self.libloc, sigma=self.libscale,
                                       size=self.init_ncells)
-        self.cellnames = ['Cell%d' % i for i in range(1, self.init_ncells+1)]
+        self.cellnames = ['cell_%d' % i for i in range(1, self.init_ncells+1)]
         cellparams = pd.DataFrame([groupid, libsize],
                                   index=['group', 'libsize'],
                                   columns=self.cellnames).T

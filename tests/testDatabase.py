@@ -18,11 +18,11 @@ class TestDatabase(unittest.TestCase):
 	def test_build_database(self):
 		if os.path.exists(self.db_file): #tearDown 
 			os.remove(self.db_file)
-		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path)
+		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path, print_output=False)
 		self.assertTrue(os.path.exists(self.db_file))
 
 	def test_query_database(self):
-		adata_sql = AnnSQL.AnnSQL(db=self.db_file)
+		adata_sql = AnnSQL.AnnSQL(db=self.db_file, print_output=False)
 		result = adata_sql.query("SELECT * FROM X")
 		if os.path.exists(self.db_file): #tearDown
 			os.remove(self.db_file)
@@ -33,7 +33,7 @@ class TestDatabase(unittest.TestCase):
 		warnings.filterwarnings('ignore')
 		self.adata = sc.datasets.pbmc3k_processed()
 		self.adata = sc.read_h5ad("data/pbmc3k_processed.h5ad", backed="r")
-		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path)
+		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path, print_output=False)
 		adata_sql = AnnSQL.AnnSQL(db=self.db_file)
 		result = adata_sql.query("SELECT * FROM X")
 		if os.path.exists("data"): #tearDown here. 
@@ -48,7 +48,7 @@ class TestDatabase(unittest.TestCase):
 		warnings.filterwarnings('ignore')
 		self.adata = sc.datasets.pbmc3k_processed()
 		self.adata = sc.read_h5ad("data/pbmc3k_processed.h5ad", backed="r")
-		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path, chunk_size=500, make_buffer_file=True)
+		MakeDb(adata=self.adata, db_name=self.db_name, db_path=self.db_path, chunk_size=500, make_buffer_file=True, print_output=False)
 		adata_sql = AnnSQL.AnnSQL(db=self.db_file)
 		result = adata_sql.query("SELECT * FROM X")
 		if os.path.exists("data"): #tearDown here. 
