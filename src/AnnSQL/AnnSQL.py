@@ -7,7 +7,11 @@ import duckdb
 import warnings
 import logging
 import time
-import os 
+import os
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.neighbors import NearestNeighbors
+import umap
 
 class AnnSQL:
 	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], memory_limit=None):
@@ -236,7 +240,8 @@ class AnnSQL:
 	def calculate_gene_counts(self, chunk_size=200, print_progress=False, gene_field="gene_names"):
 		self.check_chunk_size(chunk_size)
 		gene_names_df = self.query(f"SELECT {gene_field} FROM var")
-		gene_names_df["gene_counts"] = 0.0		
+		gene_names_df["gene_counts"] = 0.0	
+		gene_names_df["gene_mean"] = 0.0
 		gene_names_df = gene_names_df.reset_index(drop=True)
 		
 		var_table = self.query("SELECT * FROM var LIMIT 1")
@@ -249,21 +254,26 @@ class AnnSQL:
 			print("Updating Var Table")
 			if "gene_counts" not in var_table.columns:
 				self.update_query("ALTER TABLE var ADD COLUMN gene_counts FLOAT DEFAULT 0;", suppress_message=True)
+				self.update_query("ALTER TABLE var ADD COLUMN gene_mean FLOAT DEFAULT 0;", suppress_message=True)
 			else:
 				self.update_query("UPDATE var SET gene_counts = 0.0;", suppress_message=True)	
 
 		print("Gene Counts Calculation Started")
 		gene_counts = []
+		gene_means = []
 		for i in range(0, len(gene_names_df), chunk_size):
 			chunk = gene_names_df[gene_field][i:i+chunk_size]
 			query = f"SELECT {', '.join([f'SUM({gene}) as {gene}' for gene in chunk])} FROM X;"
+			query2 = f"SELECT {', '.join([f'AVG({gene}) as {gene}' for gene in chunk])} FROM X;"
 			counts_chunk = self.query(query)
+			counts_chunk2 = self.query(query2)
 			gene_counts.extend(counts_chunk.values.flatten())
+			gene_means.extend(counts_chunk2.values.flatten())
 			if print_progress == True:
 				print(f"Processed chunk {i // chunk_size + 1}")
 
 		#insert these values into the var table matching on the index.
-		gene_counts_df = pd.DataFrame({"gene_counts": gene_counts})
+		gene_counts_df = pd.DataFrame({"gene_counts": gene_counts,"gene_mean": gene_means})
 		gene_counts_df[gene_field] = gene_names_df[gene_field]
 
 		#update the var table with the gene_counts values
@@ -271,9 +281,17 @@ class AnnSQL:
 		self.conn.execute("DROP TABLE IF EXISTS gene_counts_df")
 		self.conn.register("gene_counts_df", gene_counts_df)
 		self.conn.execute(f"CREATE TABLE gene_counts_df AS SELECT * FROM gene_counts_df")
-		self.conn.execute(f"UPDATE var SET gene_counts = (SELECT gene_counts FROM gene_counts_df WHERE var.{gene_field} = gene_counts_df.{gene_field})")
+		
+		#self.conn.execute(f"UPDATE var SET gene_counts = (SELECT gene_counts FROM gene_counts_df WHERE var.{gene_field} = gene_counts_df.{gene_field})")
+		self.conn.execute(f"""
+			UPDATE var 
+			SET gene_counts = (SELECT gene_counts FROM gene_counts_df WHERE var.{gene_field} = gene_counts_df.{gene_field}),
+				gene_mean = (SELECT gene_mean FROM gene_counts_df WHERE var.{gene_field} = gene_counts_df.{gene_field})
+		""")
+
 		self.conn.execute("DROP VIEW IF EXISTS gene_counts_df")
 		print("Gene Counts Calculation Complete")
+
 
 	def calculate_variable_genes(self, chunk_size=100, print_progress=False, gene_field="gene_names", save_var_names=True,save_top_variable_genes=2000):
 		self.check_chunk_size(chunk_size)
@@ -538,6 +556,17 @@ class AnnSQL:
 		eigenvalues_sorted = eigenvalues[sorted_idx]
 		eigenvectors_sorted = eigenvectors[:, sorted_idx][:, :n_pcs]  # take only top n_pcs
 		
+		#create a table for the eigenvalues
+		eigenvalues_df = pd.DataFrame({
+			"pc": np.arange(n_pcs),
+			"eigenvalue": eigenvalues_sorted[:n_pcs]
+		})
+
+		self.query_raw("DROP TABLE IF EXISTS PC_eigenvalues;")
+		self.open_db() #The way is shut. It was made by those who are...
+		self.conn.execute("CREATE TABLE PC_eigenvalues AS SELECT * FROM eigenvalues_df;")
+		self.close_db()
+
 		#df for PC loadings
 		pc_loadings_df = pd.DataFrame({
 			"gene": np.repeat(genes, n_pcs),
@@ -658,7 +687,7 @@ class AnnSQL:
 		elif min_gene_counts != None and max_gene_counts != None:
 			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts} AND gene_counts < {max_gene_counts}")
 			genes = genes['gene_names'].tolist()
-			print("genes:",str(len(genes)))
+
 			#check X columns for total_counts. We need to keep this column for meow
 			if 'total_counts' in self.query("SELECT * FROM X LIMIT 1").columns:
 				genes.append('total_counts')
@@ -709,20 +738,187 @@ class AnnSQL:
 
 		print("X table created from X_raw. Please note: X_raw table has been deleted.")
 
-	def pca_variance_explained(self, plot=False):
+	def pca_variance_explained(self, show_plot=True, return_values=False):
+		if 'PC_eigenvalues' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('PCA not found. Run calculate_pca() first')
+
+		eigen_df = self.query("SELECT * FROM PC_eigenvalues ORDER BY pc;")
+		total_variance = eigen_df['eigenvalue'].sum()
+		eigen_df['variance_explained'] = eigen_df['eigenvalue'] / total_variance
+
+		#make the pc 1-based
+		eigen_df['pc'] = eigen_df['pc'] + 1
+
+		if show_plot == True:
+			plt.figure(figsize=(12, 6))
+			g = sns.barplot(x='pc', y='variance_explained', data=eigen_df)
+			g.set_title("PCA Variance Explained")
+			g.set_xlabel("Principal Component")
+			g.set_ylabel("Variance Explained")
+			g.set_xticklabels(g.get_xticklabels(), rotation=45, ha="right", fontsize=10)
+			plt.show()
+		
+		if return_values == True:
+			return eigen_df['variance_explained']
+
+	def plot_pca(self,PcX=1, PcY=2):
+		if 'PC_eigenvalues' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('PCA not found. Run calculate_pca() first')
+
+		#get the scores in a matrix
+		pca_scores = self.return_pca_scores_matrix()
+
+		#match the 1-based index
+		pc1 = PcX-1
+		pc2 = PcY-1
+
+		g = sns.scatterplot(x=pca_scores[pc1], y=pca_scores[pc2], data=pca_scores)
+		g.set_title(f"PC{PcY} vs PC{PcX}")
+		g.set_xlabel(f"PC{PcX}")
+		g.set_ylabel(f"PC{PcY}")
+
+
+	def plot_highly_variable_genes(self, top_variable_genes=2000):
+
+		#does the variance column exist in var?
+		if 'variance' not in self.query("SELECT * FROM var LIMIT 1").columns:
+			print("Variance not found. Running calculate_variable_genes...")
+			self.calculate_variable_genes(chunk_size=100, print_progress=False, 
+										save_var_names=False, save_top_variable_genes=top_variable_genes)
+
+		#does the column hv exist in var?
+		if 'hv' not in self.query("SELECT * FROM var LIMIT 1").columns:
+			self.query_raw("ALTER TABLE var ADD COLUMN hv INT DEFAULT 0")
+		else:
+			self.query_raw("ALTER TABLE var DROP COLUMN hv")
+			self.query_raw("ALTER TABLE var ADD COLUMN hv INT DEFAULT 0")
+
+		self.query_raw(f"UPDATE var SET hv=1 WHERE gene_names IN (SELECT gene_names FROM var ORDER BY variance DESC LIMIT {top_variable_genes})")
+		g=sns.scatterplot(data=self.query("SELECT gene_mean, log10(variance) as variance, hv FROM var"), x="gene_mean", y="variance", hue="hv", s=2)
+		g.set_title(f"Showing all genes variance vs mean expression\nTop {top_variable_genes} genes highlighted")
+		g.set_xlabel("Mean Expression")
+		g.set_ylabel("Variance (log10)")
+
+	def plot_total_counts(self):
+		if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
+			print("Total counts not found. Run method calculate_total_counts() first.")
+
+		g=sns.violinplot(x="total_counts", data=self.query("SELECT total_counts FROM obs"))
+		g.set_title("Total UMI Counts")
+		g.set_xlabel("Total UMI Counts")
+		
+	def plot_gene_counts(self):
+		if 'gene_counts' not in self.query("SELECT * FROM var LIMIT 1").columns:
+			print("Gene counts not found. Run method calculate_gene_counts() first.")
+
+		g=sns.violinplot(x="gene_counts", data=self.query("SELECT gene_counts FROM var"))
+		g.set_title("Gene Counts")
+		g.set_xlabel("Gene Counts")
+	
+
+	def calculate_umap(self, n_neighbors=15, min_dist=0.5, n_components=2, metric='euclidean'):
+		pca_scores = self.return_pca_scores_matrix().values
+		reducer = umap.UMAP(n_neighbors=n_neighbors,
+							min_dist=min_dist,
+							n_components=n_components,
+							metric=metric)
+		self.umap_embedding = pd.DataFrame(reducer.fit_transform(pca_scores))
+		self.umap_embedding.rename(columns={0: "UMAP1", 1: "UMAP2"}, inplace=True)		
+		
+		self.query_raw("DROP TABLE IF EXISTS umap_embeddings;")
+		self.open_db()
+		self.conn.register("umap_embeddings_df", self.umap_embedding)
+		self.conn.execute("CREATE TABLE umap_embeddings AS SELECT * FROM umap_embeddings_df;")
+		self.close_db()
+		print("UMAP embedding calculated.")
+
+
+	def plot_umap(self, color_by=None, palette='viridis', title=None):
+		if 'umap_embeddings' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('UMAP embedding not found. Run calculate_umap() first')
+		
+		umap_embedding = self.query("SELECT * FROM umap_embeddings")
+		
+		obs_values = None
+		if color_by in self.query("SELECT * FROM obs LIMIT 1").columns:
+			obs_values = self.query(f"SELECT {color_by} FROM obs ORDER BY cell_id")
+		elif color_by in self.query("SELECT gene_names FROM var")["gene_names"].values:
+			obs_values = self.query(f"SELECT {color_by} FROM X ORDER BY cell_id")
+		
+		df = umap_embedding.copy()
+		if obs_values is not None:
+			df[color_by] = obs_values.iloc[:, 0].values
+		
+		plt.figure(figsize=(8, 6))
+		
+		g = sns.scatterplot(data=df, x="UMAP1", y="UMAP2", hue=color_by, palette=palette)
+			
+		#continuous values, add a colorbar .
+		if obs_values is not None and pd.api.types.is_numeric_dtype(df[color_by]):
+			sc = g.collections[0]
+			plt.colorbar(sc)
+		
+		plt.title(title if title is not None else (f"UMAP Projection | {color_by}" if color_by else "UMAP Projection"))
+		plt.xlabel("UMAP1")
+		plt.ylabel("UMAP2")
+		plt.show()
+
+
+	def calculate_leiden_clusters(self, resolution=1.0, n_neighbors=30):
+
+		if 'PC_scores' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('PCA scores table not found. Run calculate_pca() first')
+		
+		from sklearn.neighbors import kneighbors_graph
+		from sknetwork.clustering import Leiden
+
+		pca_df = self.return_pca_scores_matrix()
+		pca_scores = pca_df.values
+		cell_ids = pca_df.index
+
+		knn_graph = kneighbors_graph(pca_scores, n_neighbors=30, mode="connectivity", include_self=False)
+		leiden = Leiden(resolution=1.0, random_state=42)
+		labels = leiden.fit_predict(knn_graph)
+		labels
+
+		leiden_clusters = pd.DataFrame({
+			"cell_id": cell_ids,
+			"leiden_clusters": labels
+		})
+
+		self.query_raw("DROP TABLE IF EXISTS leiden_clusters;")
+		self.open_db()
+		self.conn.register("leiden_clusters_df", leiden_clusters)
+		self.conn.execute("CREATE TABLE leiden_clusters AS SELECT * FROM leiden_clusters_df;")
+		self.conn.execute("""
+			ALTER TABLE obs ADD COLUMN IF NOT EXISTS leiden_clusters INT;
+			UPDATE obs 
+			SET leiden_clusters = (
+				SELECT leiden_clusters 
+				FROM leiden_clusters 
+				WHERE obs.cell_id = leiden_clusters.cell_id
+			);
+		""")
+		self.conn.execute("DROP TABLE IF EXISTS leiden_clusters;")
+		#cast as string
+		self.query_raw("ALTER TABLE obs ALTER COLUMN leiden_clusters TYPE TEXT;")
+		self.close_db()
+
+		print("Leiden clustering complete. Clusters saved in 'obs' as 'leiden_clusters'.")
+
+
+
+	def calculate_differential_expression(self, group1=None, group2=None, table_name="X"):
 		return True
 
-	def leiden_clustering(self, resolution=1.0, n_neighbors=30, table_name="X"):
+	def calculate_marker_genes(self, groups=None, table_name="X"):
 		return True
 
-	def plot_umap(self, table_name="X", genes=None, observations=None):
-		return True
-
-	def add_observation(self, obs_key, obs_value):
-		return True
-
-	def plot_highly_variable_genes(self):
+	def plot_differential_expression(self, table_name="X", group1=None, group2=None):
 		return True
 
 	def write_adata(self, adata_path, table_to_layer_map=None):
+		return True
+	
+	def add_observation(self, obs_key, obs_value):
 		return True
