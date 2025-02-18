@@ -11,6 +11,7 @@ import os
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
+from scipy.stats import t as tdist
 import umap
 
 class AnnSQL:
@@ -75,6 +76,10 @@ class AnnSQL:
 		self.open_db()
 		self.conn.register(table_name, df)
 		self.close_db()
+
+	@staticmethod
+	def t_cdf(t_val: float, df: float) -> float:
+		return tdist.cdf(t_val, df)
 
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
@@ -833,7 +838,7 @@ class AnnSQL:
 		print("UMAP embedding calculated.")
 
 
-	def plot_umap(self, color_by=None, palette='viridis', title=None):
+	def plot_umap(self, color_by=None, palette='viridis', title=None, legend_location=None):
 		if 'umap_embeddings' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('UMAP embedding not found. Run calculate_umap() first')
 		
@@ -852,7 +857,10 @@ class AnnSQL:
 		plt.figure(figsize=(8, 6))
 		
 		g = sns.scatterplot(data=df, x="UMAP1", y="UMAP2", hue=color_by, palette=palette)
-			
+		
+		if legend_location is not None:
+			plt.legend(loc=legend_location)
+
 		#continuous values, add a colorbar .
 		if obs_values is not None and pd.api.types.is_numeric_dtype(df[color_by]):
 			sc = g.collections[0]
@@ -900,15 +908,75 @@ class AnnSQL:
 			);
 		""")
 		self.conn.execute("DROP TABLE IF EXISTS leiden_clusters;")
-		#cast as string
+		#cast as string for plotting :shrug:
 		self.query_raw("ALTER TABLE obs ALTER COLUMN leiden_clusters TYPE TEXT;")
 		self.close_db()
 
 		print("Leiden clustering complete. Clusters saved in 'obs' as 'leiden_clusters'.")
 
 
+	def add_observations(self, obs_key, obs_values={}, match_on="ledien_clusters"):
+		
+		#if the obs_key doesn't exist, add it.
+		if obs_key not in self.query("SELECT * FROM obs LIMIT 1").columns:
+			self.query_raw(f"ALTER TABLE obs ADD COLUMN {obs_key} TEXT;")
 
-	def calculate_differential_expression(self, group1=None, group2=None, table_name="X"):
+		#iterate over the obs_values in key, value pairs
+		for key, value in obs_values.items():
+			self.query_raw(f"UPDATE obs SET {obs_key} = '{value}' WHERE {match_on} = '{key}'")
+		
+		print(f"{obs_key} added to obs table!\nobs_values keys matched on {match_on}.")
+
+
+	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, table_name="X"):
+
+		if group1 is None or group2 is None or obs_key is None:
+			raise ValueError("obs_key, group1 and group2 must be provided.")
+
+
+		obs_key = "cell_types"
+		group1_value = "Excitatory"
+		group2_value = "Inhibitory"
+		genes = asql.query("SELECT gene_names FROM var ORDER BY variance DESC LIMIT 2000;")["gene_names"].values.tolist()
+
+		start_time = time.time()
+		self.close_db()
+		self.open_db()
+		self.conn.create_function("t_cdf", AnnSQL.t_cdf, [float, float], float)
+		for gene in genes:
+			results = self.conn.execute(f"""
+			WITH stats AS (
+				SELECT 
+					obs.cell_types AS group_label,
+					AVG(X.{gene})  AS mean_1,
+					COUNT(X.{gene}) AS count_1,
+					var_samp(X.{gene}) AS variance_1
+				FROM X
+				INNER JOIN obs ON X.cell_id = obs.cell_id 
+				WHERE {obs_key} IN ('{group1_value}', '{group2_value}')
+				GROUP BY obs.cell_types
+			),
+			calc AS (
+				SELECT
+					(s1.mean_1 - s2.mean_1) / SQRT(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1) AS tstat,
+					LOG(s1.mean_1 / s2.mean_1) / LOG(2) AS logfc,
+					POWER(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1, 2) /
+					(
+						POWER(s1.variance_1/s1.count_1, 2)/(s1.count_1 - 1) +
+						POWER(s2.variance_1/s2.count_1, 2)/(s2.count_1 - 1)
+					) AS df,
+					2.0 * (1.0 - t_cdf(ABS(tstat), df)) AS pval
+				FROM stats s1
+				CROSS JOIN stats s2
+				WHERE s1.group_label = '{group1_value}'
+				AND s2.group_label = '{group2_value}'
+			)
+			SELECT * FROM calc ORDER BY pval DESC;
+			""").df()
+		self.close_db()
+
+		print(f"DE Calculation Complete.")
+
 		return True
 
 	def calculate_marker_genes(self, groups=None, table_name="X"):
@@ -918,7 +986,4 @@ class AnnSQL:
 		return True
 
 	def write_adata(self, adata_path, table_to_layer_map=None):
-		return True
-	
-	def add_observation(self, obs_key, obs_value):
 		return True
