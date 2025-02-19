@@ -11,6 +11,7 @@ import os
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
+from scipy import stats
 from scipy.stats import t as tdist
 import umap
 
@@ -76,10 +77,6 @@ class AnnSQL:
 		self.open_db()
 		self.conn.register(table_name, df)
 		self.close_db()
-
-	@staticmethod
-	def t_cdf(t_val: float, df: float) -> float:
-		return tdist.cdf(t_val, df)
 
 	def build_db(self):
 		self.conn = duckdb.connect(':memory:')
@@ -928,18 +925,40 @@ class AnnSQL:
 		print(f"{obs_key} added to obs table!\nobs_values keys matched on {match_on}.")
 
 
-	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, table_name="X"):
+	@staticmethod
+	def t_cdf(t_val: float, df: float) -> float:
+		return tdist.cdf(t_val, df)
 
-		if group1 is None or group2 is None or obs_key is None:
+	def adjusted_p_value(self):
+		results = self.query("SELECT * FROM diff_expression")
+		adj_p_val_results = stats.false_discovery_control(results["pval"].to_numpy())
+		results
+		adj_p_val_results
+		df_adj = pd.DataFrame({
+			"gene": results["gene"],
+			"adj_pval": adj_p_val_results
+		})
+
+		self.open_db()
+		self.conn.register("temp_adj", df_adj)
+		self.conn.execute("""
+		UPDATE diff_expression
+		SET adj_pval = temp_adj.adj_pval
+		FROM temp_adj
+		WHERE diff_expression.gene = temp_adj.gene;
+		""")
+		self.conn.unregister("temp_adj")
+		
+
+	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, name="None"):
+
+		if group1_value is None or group2_value is None or obs_key is None:
 			raise ValueError("obs_key, group1 and group2 must be provided.")
 
+		genes = self.query("SELECT gene_names FROM var;")["gene_names"].values.tolist()
 
-		obs_key = "cell_types"
-		group1_value = "Excitatory"
-		group2_value = "Inhibitory"
-		genes = asql.query("SELECT gene_names FROM var ORDER BY variance DESC LIMIT 2000;")["gene_names"].values.tolist()
-
-		start_time = time.time()
+		self.query_raw("DROP TABLE IF EXISTS diff_expression;")
+		self.query_raw("CREATE TABLE diff_expression (name TEXT, group1 TEXT, group2 TEXT, gene TEXT, tstat DOUBLE, logfc DOUBLE, df DOUBLE, pval DOUBLE, adj_pval DOUBLE);")
 		self.close_db()
 		self.open_db()
 		self.conn.create_function("t_cdf", AnnSQL.t_cdf, [float, float], float)
@@ -958,6 +977,10 @@ class AnnSQL:
 			),
 			calc AS (
 				SELECT
+					'{name}' AS name,
+					'{group1_value}' AS group1,
+					'{group2_value}' AS group2,
+					'{gene}' AS gene,
 					(s1.mean_1 - s2.mean_1) / SQRT(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1) AS tstat,
 					LOG(s1.mean_1 / s2.mean_1) / LOG(2) AS logfc,
 					POWER(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1, 2) /
@@ -965,25 +988,39 @@ class AnnSQL:
 						POWER(s1.variance_1/s1.count_1, 2)/(s1.count_1 - 1) +
 						POWER(s2.variance_1/s2.count_1, 2)/(s2.count_1 - 1)
 					) AS df,
-					2.0 * (1.0 - t_cdf(ABS(tstat), df)) AS pval
+					2.0 * (1.0 - t_cdf(ABS(tstat), df)) AS pval,
 				FROM stats s1
 				CROSS JOIN stats s2
 				WHERE s1.group_label = '{group1_value}'
 				AND s2.group_label = '{group2_value}'
 			)
-			SELECT * FROM calc ORDER BY pval DESC;
-			""").df()
+			INSERT INTO diff_expression SELECT *, 1 FROM calc;
+			""")
 		self.close_db()
-
+		self.adjusted_p_value()
 		print(f"DE Calculation Complete.")
 
-		return True
+	def plot_differential_expression(self, pvalue_threshold=0.05, logfc_threshold=1.0):
+		df = self.query("SELECT * FROM diff_expression")
+		df['neg_log10_adj_pval'] = -np.log10(df['adj_pval'])
+		significant = (df['adj_pval'] < pvalue_threshold) & (np.abs(df['logfc']) >= logfc_threshold)
+		
+		plt.figure(figsize=(8, 6))
+		plt.scatter(df['logfc'], df['neg_log10_adj_pval'], color='grey', alpha=0.7, label='Not significant')
+		plt.scatter(df.loc[significant, 'logfc'], df.loc[significant, 'neg_log10_adj_pval'], 
+					color='red', alpha=0.7, label='Significant')
+		
+		plt.axhline(-np.log10(pvalue_threshold), color='blue', linestyle='--', label=f'p={pvalue_threshold}')
+		plt.xlabel('Log2 Fold Change')
+		plt.ylabel('-Log10 Adjusted p-value')
+		plt.title('Diffential Expression')
+		plt.legend()
+		plt.show()
+
 
 	def calculate_marker_genes(self, groups=None, table_name="X"):
 		return True
 
-	def plot_differential_expression(self, table_name="X", group1=None, group2=None):
-		return True
 
 	def write_adata(self, adata_path, table_to_layer_map=None):
 		return True

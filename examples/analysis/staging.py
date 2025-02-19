@@ -12,6 +12,8 @@ import os
 warnings.filterwarnings('ignore')
 from AnnSQL import AnnSQL
 from AnnSQL.MakeDb import MakeDb
+from scipy import stats
+
 
 # #make the db
 # filepath = "../data/splatter/data_1000_test.h5ad"
@@ -90,68 +92,16 @@ asql.add_observations(obs_key="cell_types", obs_values=cell_types, match_on="lei
 #plot the cell types
 asql.plot_umap(color_by="cell_types")
 
-#diff exp testing
-obs_key = "cell_types"
-group1_value = "Excitatory"
-group2_value = "Inhibitory"
-genes = asql.query("SELECT gene_names FROM var ORDER BY variance DESC LIMIT 2000;")["gene_names"].values.tolist()
+#calculate differential expression between excitatory and inhibitory cells
+asql.calculate_differential_expression(obs_key="cell_types", group1_value="Excitatory", group2_value="Inhibitory")
 
-start_time = time.time()
-asql.close_db()
-asql.open_db()
-asql.conn.create_function("t_cdf", AnnSQL.t_cdf, [float, float], float)
-for gene in genes:
-	results = asql.conn.execute(f"""
-	WITH stats AS (
-		SELECT 
-			obs.cell_types AS group_label,
-			AVG(X.{gene})  AS mean_1,
-			COUNT(X.{gene}) AS count_1,
-			var_samp(X.{gene}) AS variance_1
-		FROM X
-		INNER JOIN obs ON X.cell_id = obs.cell_id 
-		WHERE {obs_key} IN ('{group1_value}', '{group2_value}')
-		GROUP BY obs.cell_types
-	),
-	calc AS (
-		SELECT
-			(s1.mean_1 - s2.mean_1) / SQRT(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1) AS tstat,
-			LOG(s1.mean_1 / s2.mean_1) / LOG(2) AS logfc,
-			POWER(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1, 2) /
-			(
-				POWER(s1.variance_1/s1.count_1, 2)/(s1.count_1 - 1) +
-				POWER(s2.variance_1/s2.count_1, 2)/(s2.count_1 - 1)
-			) AS df,
-			2.0 * (1.0 - t_cdf(ABS(tstat), df)) AS pval
-		FROM stats s1
-		CROSS JOIN stats s2
-		WHERE s1.group_label = '{group1_value}'
-		AND s2.group_label = '{group2_value}'
-	)
-	SELECT * FROM calc ORDER BY pval DESC;
-	""").df()
-	#print(results)
-asql.close_db()
-end_time = time.time()
-print(f"Time taken: {end_time - start_time}")
+#query the differential expression
+asql.query("SELECT * FROM diff_expression")
 
-#check the ttest in python
-group1 = asql.query(f"""
-SELECT X.{gene} FROM X
-INNER JOIN obs ON X.cell_id = obs.cell_id
-WHERE obs.cell_types = '{group1_value}';
-""")
-group2 = asql.query(f"""
-SELECT X.{gene} FROM X
-INNER JOIN obs ON X.cell_id = obs.cell_id
-WHERE obs.cell_types = '{group2_value}';
-""")
-from scipy.stats import ttest_ind
-ttest_ind(group1, group2, equal_var=False)
-
-
+#plot the differential expression
+asql.plot_differential_expression(pvalue_threshold=0.01, logfc_threshold=0.5)
 
 
 #TODO
-#differential expression
-#plot the differential expression as volcano
+#Marker genes based on the differential expression
+#write to adata
