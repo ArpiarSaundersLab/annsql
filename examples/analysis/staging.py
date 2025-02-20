@@ -81,7 +81,7 @@ asql.plot_umap()
 asql.calculate_leiden_clusters(resolution=1.0, n_neighbors=30)
 
 #plot the leiden clusters
-asql.plot_umap(color_by="leiden_clusters")
+asql.plot_umap(color_by="leiden_clusters", legend_location="on data")
 
 #calculate marker genes
 asql.calculate_marker_genes(obs_key="leiden_clusters")
@@ -94,6 +94,9 @@ asql.plot_marker_genes(obs_key="leiden_clusters", columns=3)
 
 #return a list of marker genes
 asql.get_marker_genes(obs_key="leiden_clusters", group="0")
+
+#take a look at a marker gene
+asql.plot_umap(color_by="gene_4601")
 
 #create cell type annotations
 cell_types = {"0": "Microglia","1":"Inhibitory","2":"OPCs","3":"Astrocytes","4":"Excitatory"}
@@ -109,7 +112,4 @@ asql.calculate_differential_expression(obs_key="cell_type", group1_value="Excita
 
 #plot the differential expression between groups
 asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=0.5, group1="Excitatory", group2="Inhibitory")
-
-#write to an AnnData file just because
-asql.write_adata(filename="data_1000.h5ad")
 

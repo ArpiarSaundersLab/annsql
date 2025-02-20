@@ -835,7 +835,7 @@ class AnnSQL:
 		print("UMAP embedding calculated.")
 
 
-	def plot_umap(self, color_by=None, palette='viridis', title=None, legend_location=None):
+	def plot_umap(self, color_by=None, palette='viridis', title=None, legend_location=None, annotate=False):
 		if 'umap_embeddings' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('UMAP embedding not found. Run calculate_umap() first')
 		
@@ -857,12 +857,21 @@ class AnnSQL:
 		
 		if legend_location is not None:
 			plt.legend(loc=legend_location)
+		else:
+			plt.legend([],[], frameon=False)
 
 		#continuous values, add a colorbar .
 		if obs_values is not None and pd.api.types.is_numeric_dtype(df[color_by]):
 			sc = g.collections[0]
 			plt.colorbar(sc)
 		
+		if annotate:
+			import matplotlib.patheffects as path_effects
+			cluster_centers = df.groupby(color_by)[['UMAP1', 'UMAP2']].mean()
+			for label, row in cluster_centers.iterrows():
+				text = plt.text(row['UMAP1'], row['UMAP2'], str(label), fontsize=12, ha='center', va='center', color='white')
+				text.set_path_effects([path_effects.Stroke(linewidth=3, foreground='black'), path_effects.Normal()])
+
 		plt.title(title if title is not None else (f"UMAP Projection | {color_by}" if color_by else "UMAP Projection"))
 		plt.xlabel("UMAP1")
 		plt.ylabel("UMAP2")
@@ -917,6 +926,11 @@ class AnnSQL:
 		#if the obs_key doesn't exist, add it.
 		if obs_key not in self.query("SELECT * FROM obs LIMIT 1").columns:
 			self.query_raw(f"ALTER TABLE obs ADD COLUMN {obs_key} TEXT;")
+		else:
+			#drop the column if it exists
+			self.query_raw(f"ALTER TABLE obs DROP COLUMN {obs_key};")
+			self.query_raw(f"ALTER TABLE obs ADD COLUMN {obs_key} TEXT;")
+
 
 		#iterate over the obs_values in key, value pairs
 		for key, value in obs_values.items():
@@ -999,7 +1013,7 @@ class AnnSQL:
 					'{group2_value}' AS group2,
 					'{gene}' AS gene,
 					(s1.mean_1 - s2.mean_1) / SQRT(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1) AS tstat,
-					LOG(s1.mean_1 / s2.mean_1) / LOG(2) AS logfc,
+					LOG((s1.mean_1 + 1e-10) / (s2.mean_1+ + 1e-10)) / LOG(2) AS logfc,
 					POWER(s1.variance_1/s1.count_1 + s2.variance_1/s2.count_1, 2) /
 					(
 						POWER(s1.variance_1/s1.count_1, 2)/(s1.count_1 - 1) +
@@ -1045,10 +1059,10 @@ class AnnSQL:
 
 
 	def calculate_marker_genes(self, obs_key="leiden_clusters", table_name="X"):
-
+		self.open_db()
 		groups = self.conn.execute(f"SELECT DISTINCT {obs_key} FROM obs").df()[obs_key].values.tolist()
 		for group in groups:
-			print(f"Calculating marker genes for {obs_key} > {group}")
+			print(f"Calculating marker genes for {obs_key}: {group}")
 			self.calculate_differential_expression(obs_key=obs_key, group1_value=group, group2_value="ALL", name="Markers", drop_table=False, marker_genes=True)
 		print(f"Marker genes calculation complete.")
 		print(f"Query the results with:\n\"SELECT * FROM diff_expression WHERE name='Markers'\".")
@@ -1114,5 +1128,7 @@ class AnnSQL:
 			adata.obsm["X_pca"] = self.return_pca_scores_matrix().values
 		if 'diff_expression' in self.show_tables()['table_name'].tolist():
 			adata.uns["diff_expression"] = self.query("SELECT * FROM diff_expression")
+		if 'umap_embeddings' in self.show_tables()['table_name'].tolist():
+			adata.obsm["X_umap"] = self.query("SELECT * FROM umap_embeddings").values
 		adata.write(filename)
 		print(f"AnnData object written to {filename}.")
