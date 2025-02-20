@@ -83,25 +83,33 @@ asql.calculate_leiden_clusters(resolution=1.0, n_neighbors=30)
 #plot the leiden clusters
 asql.plot_umap(color_by="leiden_clusters")
 
+#calculate marker genes
+asql.calculate_marker_genes(obs_key="leiden_clusters")
+
+#plot the marker genes of 1 vs all
+asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=0.5, group1="1", group2="ALL")
+
+#plot marker genes for each cluster
+asql.plot_marker_genes(obs_key="leiden_clusters", columns=3)
+
+#return a list of marker genes
+asql.get_marker_genes(obs_key="leiden_clusters", group="0")
+
 #create cell type annotations
-cell_types = {"0": "Microglia","1":"Inhibitory","2":"OPCs","3":"Astrocytes","4":"Excitatory"}	
+cell_types = {"0": "Microglia","1":"Inhibitory","2":"OPCs","3":"Astrocytes","4":"Excitatory"}
 
 #add the cell types to the obs table
-asql.add_observations(obs_key="cell_types", obs_values=cell_types, match_on="leiden_clusters")
+asql.add_observations(obs_key="cell_type", obs_values=cell_types, match_on="leiden_clusters")
 
 #plot the cell types
-asql.plot_umap(color_by="cell_types")
+asql.plot_umap(color_by="cell_type")
 
-#calculate differential expression between excitatory and inhibitory cells
-asql.calculate_differential_expression(obs_key="cell_types", group1_value="Excitatory", group2_value="Inhibitory")
+#explicit calculate differential expression between groups
+asql.calculate_differential_expression(obs_key="cell_type", group1_value="Excitatory", group2_value="Inhibitory", drop_table=False)
 
-#query the differential expression
-asql.query("SELECT * FROM diff_expression")
+#plot the differential expression between groups
+asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=0.5, group1="Excitatory", group2="Inhibitory")
 
-#plot the differential expression
-asql.plot_differential_expression(pvalue_threshold=0.01, logfc_threshold=0.5)
+#write to an AnnData file just because
+asql.write_adata(filename="data_1000.h5ad")
 
-
-#TODO
-#Marker genes based on the differential expression
-#write to adata

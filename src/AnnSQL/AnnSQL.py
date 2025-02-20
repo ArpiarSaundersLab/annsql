@@ -950,30 +950,47 @@ class AnnSQL:
 		self.conn.unregister("temp_adj")
 		
 
-	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, name="None"):
+	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, name="None", drop_table=False, marker_genes=False):
 
-		if group1_value is None or group2_value is None or obs_key is None:
+		if marker_genes == False and (group1_value is None or group2_value is None or obs_key is None):
 			raise ValueError("obs_key, group1 and group2 must be provided.")
+		elif marker_genes == True and (obs_key is None or group1_value is None):
+			raise ValueError("obs_key must be provided for marker_genes=True.")
 
 		genes = self.query("SELECT gene_names FROM var;")["gene_names"].values.tolist()
 
-		self.query_raw("DROP TABLE IF EXISTS diff_expression;")
-		self.query_raw("CREATE TABLE diff_expression (name TEXT, group1 TEXT, group2 TEXT, gene TEXT, tstat DOUBLE, logfc DOUBLE, df DOUBLE, pval DOUBLE, adj_pval DOUBLE);")
-		self.close_db()
+		if drop_table == True:
+			self.query_raw("DROP TABLE IF EXISTS diff_expression;")
+		
+		self.query_raw("CREATE TABLE IF NOT EXISTS diff_expression (name TEXT, group1 TEXT, group2 TEXT, gene TEXT, tstat DOUBLE, logfc DOUBLE, df DOUBLE, pval DOUBLE, adj_pval DOUBLE);")
 		self.open_db()
 		self.conn.create_function("t_cdf", AnnSQL.t_cdf, [float, float], float)
+		
+		if (marker_genes == True):
+			groups = self.conn.execute(f"SELECT DISTINCT {obs_key} FROM obs").df()[obs_key].values.tolist()
+			groups = [str(group) for group in groups]
+			groups_str = "', '".join(groups)
+			in_condition = f"IN ('{groups_str}')"
+			group_by_condition = f"GROUP BY CASE WHEN obs.{obs_key} = '{group1_value}' THEN '{group1_value}' ELSE 'ALL' END"
+			select_condition = f"CASE WHEN obs.{obs_key} = '{group1_value}' THEN '{group1_value}' ELSE 'ALL' END AS group_label,"
+			group2_value = "ALL"
+		else:
+			in_condition = f"IN ('{group1_value}', '{group2_value}')"
+			group_by_condition = f"GROUP BY obs.{obs_key}"
+			select_condition = f"obs.{obs_key} AS group_label,"
+
 		for gene in genes:
-			results = self.conn.execute(f"""
+			query = f"""
 			WITH stats AS (
 				SELECT 
-					obs.cell_types AS group_label,
+					{select_condition}
 					AVG(X.{gene})  AS mean_1,
 					COUNT(X.{gene}) AS count_1,
 					var_samp(X.{gene}) AS variance_1
 				FROM X
 				INNER JOIN obs ON X.cell_id = obs.cell_id 
-				WHERE {obs_key} IN ('{group1_value}', '{group2_value}')
-				GROUP BY obs.cell_types
+				WHERE {obs_key} {in_condition}
+				{group_by_condition}
 			),
 			calc AS (
 				SELECT
@@ -995,32 +1012,107 @@ class AnnSQL:
 				AND s2.group_label = '{group2_value}'
 			)
 			INSERT INTO diff_expression SELECT *, 1 FROM calc;
-			""")
+			"""
+			self.conn.execute(query)
 		self.close_db()
 		self.adjusted_p_value()
 		print(f"DE Calculation Complete.")
 
-	def plot_differential_expression(self, pvalue_threshold=0.05, logfc_threshold=1.0):
-		df = self.query("SELECT * FROM diff_expression")
+	def plot_differential_expression(self, pvalue_threshold=0.05, logfc_threshold=1.0, group1=None, group2=None, title=None, filter_name=None):
+
+		if group1 is None or group2 is None:
+			df = self.query("SELECT * FROM diff_expression")
+		else:
+			df = self.query(f"SELECT * FROM diff_expression WHERE group1 = '{group1}' AND group2 = '{group2}'")
+
 		df['neg_log10_adj_pval'] = -np.log10(df['adj_pval'])
 		significant = (df['adj_pval'] < pvalue_threshold) & (np.abs(df['logfc']) >= logfc_threshold)
-		
 		plt.figure(figsize=(8, 6))
 		plt.scatter(df['logfc'], df['neg_log10_adj_pval'], color='grey', alpha=0.7, label='Not significant')
 		plt.scatter(df.loc[significant, 'logfc'], df.loc[significant, 'neg_log10_adj_pval'], 
 					color='red', alpha=0.7, label='Significant')
-		
 		plt.axhline(-np.log10(pvalue_threshold), color='blue', linestyle='--', label=f'p={pvalue_threshold}')
+		plt.axvline(logfc_threshold, color='blue', linestyle='--', label=f'logFC={logfc_threshold}')
+		plt.axvline(-(logfc_threshold), color='blue', linestyle='--', label=f'logFC=-{logfc_threshold}')
 		plt.xlabel('Log2 Fold Change')
 		plt.ylabel('-Log10 Adjusted p-value')
-		plt.title('Diffential Expression')
+		plt.title(f'Differential Expression | {group1} and {group2}')
+		if title is not None:
+			plt.title(title)
 		plt.legend()
 		plt.show()
+		print(f"Query the results with:\n\"SELECT * FROM diff_expression WHERE group1='{group1}' and group2='{group2}'\".")
 
 
-	def calculate_marker_genes(self, groups=None, table_name="X"):
-		return True
+	def calculate_marker_genes(self, obs_key="leiden_clusters", table_name="X"):
+
+		groups = self.conn.execute(f"SELECT DISTINCT {obs_key} FROM obs").df()[obs_key].values.tolist()
+		for group in groups:
+			print(f"Calculating marker genes for {obs_key} > {group}")
+			self.calculate_differential_expression(obs_key=obs_key, group1_value=group, group2_value="ALL", name="Markers", drop_table=False, marker_genes=True)
+		print(f"Marker genes calculation complete.")
+		print(f"Query the results with:\n\"SELECT * FROM diff_expression WHERE name='Markers'\".")
 
 
-	def write_adata(self, adata_path, table_to_layer_map=None):
-		return True
+	def plot_marker_genes(self, obs_key="leiden_clusters", columns=2):
+		if 'diff_expression' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('Differential expression not found. Run calculate_differential_expression() first')
+		
+		groups = self.query(f"SELECT DISTINCT({obs_key}) FROM obs ORDER BY {obs_key};")[obs_key].tolist()
+
+		num_rows = (len(groups) + 2) // columns
+		fig, axes = plt.subplots(num_rows, columns, figsize=(15, 5 * num_rows))
+		axes = axes.flatten()
+
+		for idx, group in enumerate(groups):
+			results = self.query(f"""
+			SELECT row_number() OVER (ORDER BY tstat DESC) as id, * FROM diff_expression 
+				WHERE name='Markers' AND group1 = '{group}' AND group2 = 'ALL' 
+				AND adj_pval < 0.05 
+				AND (logfc > 0.5 OR logfc < 0.5) 
+				ORDER BY tstat DESC LIMIT 20;
+			""")
+			
+			ax = axes[idx]
+			sns.scatterplot(x=results["id"], y=results["tstat"], ax=ax)
+			for i, txt in enumerate(results["gene"]):
+				ax.annotate(txt, (results["id"][i], results["tstat"][i]), xytext=(-5, 12), textcoords='offset points', rotation=90)
+			max_tstat = results["tstat"].max()
+			ax.set_ylim(0, max_tstat + 20)
+			ax.set_ylabel("t-statistic")
+			ax.set_xlabel("Rank")
+			ax.set_title(f"Top marker genes for cluster {group} vs all")
+
+		#remove unused subplots
+		for j in range(idx + 1, len(axes)):
+			fig.delaxes(axes[j])
+
+		plt.tight_layout()
+		plt.show()
+
+	def get_marker_genes(self, obs_key="leiden_clusters", group=None):
+		if group is None:
+			raise ValueError("Group must be provided.")
+		if 'diff_expression' not in self.show_tables()['table_name'].tolist():
+			raise ValueError('Differential expression not found. Run calculate_marker_genes() first')
+
+		return self.query(f"""
+		SELECT * FROM diff_expression 
+		WHERE name='Markers' AND group1 = '{group}' AND group2 = 'ALL' 
+		AND adj_pval < 0.05 
+		AND (logfc > 0.5 OR logfc < 0.5) 
+		ORDER BY tstat DESC;
+		""")
+
+
+	def write_adata(self, filename="export.h5ad"):
+		import anndata as ad
+		adata = ad.AnnData(X=self.query("SELECT * EXCLUDE(cell_id) FROM X"), 
+							obs=self.query("SELECT * FROM obs"))
+		adata.var = self.query("SELECT * FROM var")
+		if 'PC_scores' in self.show_tables()['table_name'].tolist():
+			adata.obsm["X_pca"] = self.return_pca_scores_matrix().values
+		if 'diff_expression' in self.show_tables()['table_name'].tolist():
+			adata.uns["diff_expression"] = self.query("SELECT * FROM diff_expression")
+		adata.write(filename)
+		print(f"AnnData object written to {filename}.")
