@@ -27,22 +27,31 @@ comparisons = comparisons.replace([np.inf, -np.inf], np.log(0.01))
 #set the colors of the plots (ansql1, anndata in-mem, ansql2, anndata backed, seurat)
 colors = ["#07b88e", "#a4a6a4", "#07b88e", "#a4a6a4","#FFA067"]
 
-#plot aggregation of all filters memory usage
+
+#plot aggregation of all filters runtime
 sns.set(style="whitegrid")
 plt.figure(dpi=1200)
 sns.lineplot(data=comparisons, x='size', y='memory_log', hue='method', palette=colors, errorbar="ci")
-plt.ylabel("Memory Usage (Mb)")
-plt.xlabel("Total Cells")
-plt.xticks(rotation=75)
+plt.ylabel("Memory Usage (Mb)", fontsize=18, fontweight='bold')
+plt.xlabel("Total Cells", fontsize=18, fontweight='bold')
+plt.xticks(rotation=50)
 plt.xticks(np.arange(0, 275000, 25000))
 plt.xlim(0, 250000)
 plt.yticks(np.log([0.01,0.1, 1, 10, 100, 1000, 10000]), [0.01,0.1, 1, 10, 100, 1000, 10000])
 plt.xticks(fontsize=18, fontweight='bold')
 plt.yticks(fontsize=18, fontweight='bold')	
 plt.grid(False)
-#plt.legend().remove()
 plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+# plt.legend().remove()
+sns.despine(top=True)
+plt.gca().spines['left'].set_linewidth(3)
+plt.gca().spines['left'].set_color('black')
+plt.gca().spines['bottom'].set_linewidth(3)
+plt.gca().spines['bottom'].set_color('black')
+plt.title("Memory Profiles\n", fontsize=22, fontweight='bold')
+plt.text(72000, 11.5, "(6) Filters vs. Queries", fontsize=16)
 plt.show()
+
 
 
 
