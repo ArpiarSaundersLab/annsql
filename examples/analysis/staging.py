@@ -112,4 +112,3 @@ asql.calculate_differential_expression(obs_key="cell_type", group1_value="Excita
 
 #plot the differential expression between groups
 asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=0.5, group1="Excitatory", group2="Inhibitory")
-
