@@ -15,6 +15,7 @@ from memory_profiler import profile
 warnings.filterwarnings('ignore')
 
 class BuildDb:
+	
 
 	sql_reserved_keywords = [
 		'add', 'all', 'alter', 'and', 'any', 'as', 'asc', 'between', 'by', 'case', 'cast', 'check', 
@@ -29,18 +30,21 @@ class BuildDb:
 		"""
 		Initializes the BuildDb object. This object is used to create a database from an AnnData object byway of the MakeDb object.
 
+		Attributes:
+			sql_reserved_keywords (list): List of SQL reserved keywords.
+
 		Parameters:
-			- conn (optional): Connection object to the database.
-			- db_path (optional): Path to the database file.
-			- db_name (optional): Name of the database.
-			- adata (optional): AnnData object.
-			- create_all_indexes (optional): Flag indicating whether to create all indexes.
-			- create_basic_indexes (optional): Flag indicating whether to create basic indexes.
-			- convenience_view (optional): Flag indicating whether to create a convenience view.
-			- chunk_size (optional): Size of the chunks for processing the data.
-			- make_buffer_file (optional): Flag indicating whether to create a buffer file.
-			- print_output (optional): Flag indicating whether to print output.
-			- layers (optional): List of layers to include in the database.
+			conn (optional): Connection object to the database.
+			db_path (optional): Path to the database file.
+			db_name (optional): Name of the database.
+			adata (optional): AnnData object.
+			create_all_indexes (optional): Flag indicating whether to create all indexes.
+			create_basic_indexes (optional): Flag indicating whether to create basic indexes.
+			convenience_view (optional): Flag indicating whether to create a convenience view.
+			chunk_size (optional): Size of the chunks for processing the data.
+			make_buffer_file (optional): Flag indicating whether to create a buffer file.
+			print_output (optional): Flag indicating whether to print output.
+			layers (optional): List of layers to include in the database.
 		Returns:
 			None
 		"""
@@ -58,26 +62,28 @@ class BuildDb:
 		self.build()
 		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
-	
-	def determine_buffer_status(self):
-		mem = psutil.virtual_memory()
-		if mem.total <= 20 * 1024 ** 3:
-			print("=========================================================================")
-			print("Low memory system detected. (<=20GB)")
-			print("Using a buffer. Building the Db will take longer...")
-			print("To disable this, explicitly set the parameter to: make_buffer_file=False")
-			print("=========================================================================")
-			self.make_buffer_file = True
-		else:
-			self.make_buffer_file = False
-
-
-	def print_memory_usage(self,chunk_num, id=1):
-		process = psutil.Process()
-		mem_info = process.memory_info()
-		print(f"Chunk {chunk_num} - id {id} Memory usage: {mem_info.rss / (1024 ** 2):.2f} MB")
 
 	def build(self):
+		"""
+		Build the database tables for the AnnSQL object.
+		This method creates and inserts data into the following tables:
+		Tables:
+		
+			X: Contains cell_id as VARCHAR and var_names_df columns as FLOAT.
+			obs: Contains the observation data.
+			var_names: Contains the gene names.
+			var: Contains the variable data.
+			obsm: Contains the observation matrix data.
+			varm: Contains the variable matrix data.
+			obsp: Contains the observation sparse matrix data.
+		
+		The method also creates indexes on the tables based on the specified layers.
+
+		Parameters:
+			None
+		Returns:
+			None
+		"""
 		obs_df = self.adata.obs.reset_index()
 		var_names = self.adata.var_names
 		var = self.adata.var
@@ -289,6 +295,15 @@ class BuildDb:
 			self.conn.execute("CREATE VIEW adata AS SELECT * FROM obs JOIN X ON obs.cell_id = X.cell_id")
 
 	def make_json_serializable(self,value):
+		"""
+		Converts a given value into a JSON serializable format.
+
+		Parameters:
+			value (any): The value to be converted.
+		Returns:
+			JSON: The converted value in a JSON serializable format.
+		"""
+		
 		if isinstance(value, np.ndarray):
 			return value.tolist()
 		elif isinstance(value, (np.int64, np.int32)):
@@ -303,6 +318,19 @@ class BuildDb:
 			return value  
 
 	def build_uns_layer(self):
+		"""
+		Builds the uns_raw table in the database and inserts the uns data.
+		This method creates the uns_raw table in the database if it doesn't exist and inserts the uns data into the table.
+		The uns data is a dictionary containing key-value pairs. The keys are stored in the 'key' column, the serialized
+		values are stored in the 'value' column, and the data type of each value is stored in the 'data_type' column.
+		If an error occurs during table creation or data insertion, the error message is printed to the console.
+
+		Parameters:
+			None
+		Returns:
+			None
+		"""
+
 		try:
 			self.conn.execute("CREATE TABLE uns_raw (key TEXT, value TEXT, data_type TEXT)")
 		except Exception as e:
@@ -330,9 +358,41 @@ class BuildDb:
 				print(f"Error inserting key {key}: {e}")
 
 	def replace_special_chars(self, string):
+		"""
+		Replaces special characters in a string with underscores.
+
+		Parameters:
+			string (str): The input string to be processed.
+		Returns:
+			str: The processed string with special characters replaced by underscores.
+		"""
+
 		if string.lower() in self.sql_reserved_keywords:
 			string = "r_"+string #prefix reserved keywords with r_. The OG can be found in gene_names_orig column
 		if string[0].isdigit():
 			return 'n'+string.replace("-", "_").replace(".", "_")
 		else:
 			return string.replace("-", "_").replace(".", "_").replace("(", "_").replace(")", "_").replace(",", "_").replace(" ", "_")
+
+	def determine_buffer_status(self):
+		"""
+		Determines the buffer status based on the available memory.
+		If the total available memory is less than or equal to 20GB, a buffer is used
+		and building the database will take longer. To disable the buffer, set the
+		`make_buffer_file` parameter to `False`.
+		
+		Parameters:
+			None
+		Returns:
+			None
+		"""
+		mem = psutil.virtual_memory()
+		if mem.total <= 20 * 1024 ** 3:
+			print("=========================================================================")
+			print("Low memory system detected. (<=20GB)")
+			print("Using a buffer. Building the Db will take longer...")
+			print("To disable this, explicitly set the parameter to: make_buffer_file=False")
+			print("=========================================================================")
+			self.make_buffer_file = True
+		else:
+			self.make_buffer_file = False

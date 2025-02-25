@@ -1,0 +1,32 @@
+site_name: AnnSQL Docs
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - Tutorials:
+    - Basic Usage: basic_usage.ipynb
+    - On-Disk: build_ondisk_database.ipynb
+    - In-Memory: build_in_memory_database.ipynb
+    - Preprocessing: preprocessing.ipynb
+    - Differential Expression: de.ipynb
+    - Meta Cells: build_meta_cells.ipynb
+    - R usage: inteRoperability.md
+  - API:
+    - AnnSQL: api_annsql.md
+    - MakeDb: api_makedb.md
+    - BuildDb: api_builddb.md
+  - Citation: cite.md
+  - Github: "https://github.com/ArpiarSaundersLab/annsql"
+plugins:
+    - mkdocs-jupyter:
+          theme: dark
+          ignore_h1_titles: True
+    - mkdocstrings:
+        handlers:
+          python:
+            setup_commands:
+              - import sys
+              - sys.path.append("src")
+theme:
+    name: material
+    palette:
+        scheme: slate

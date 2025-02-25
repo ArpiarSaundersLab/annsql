@@ -19,19 +19,21 @@ class AnnSQL:
 	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], memory_limit=None):
 		"""
 		Initializes an instance of the AnnSQL class. This class is used to query and update a database created from an AnnData object. 
-		it also provides methods for data normalization and transformation. The in-process database engine is DuckDB AND the database is 
+		it also provides methods for preprocessing and basic analysis. The in-process database engine is DuckDB and the database is 
 		stored in memory by default, However, the database can be loaded from a file path by providing the db parameter. Databases can be
 		built from an AnnData object by using the MakeDb class.
 
 		Parameters:
-			- adata (AnnData or None): An AnnData object containing the data to be stored in the database. If None, an empty AnnData object will be created.
-			- db (str or None): The path to an existing database file. 
-			- create_all_indexes (bool): Whether to create indexes for all columns in the database. Memory intensive. Default is False.
-			- create_basic_indexes (bool): Whether to create indexes for basic columns. Default is False.
-			- print_output (bool): Whether to print output messages for in-memory database creation. Default is False.
-			- layers (list): A list of layer names to be stored in the database. Default is ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"].
+			adata (AnnData or None): An AnnData object containing the data to be stored in the database. If None, an empty AnnData object will be created.
+			db (str or None): The path to an existing database file. 
+			create_all_indexes (bool): Whether to create indexes for all columns in the database. Memory intensive. Default is False.
+			create_basic_indexes (bool): Whether to create indexes for basic columns. Memory intensive. Default is False.
+			print_output (bool): Whether to print output messages for database creation. Default is True.
+			layers (list): A list of layer names to be stored in the database. Default is ["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"].
+			memory_limit (str): The memory limit for the DuckDB database. Default is None.
+
 		Returns:
-			None
+			AnnSQL (Object): An instance of the AnnSQL class.
 		"""		
 		self.adata = self.open_anndata(adata)
 		self.db = db
@@ -48,6 +50,15 @@ class AnnSQL:
 			self.open_db()
 
 	def validate_params(self):
+		"""
+		Validates the parameters of the AnnSQL object.
+
+		Raises:
+			ValueError: If both `adata` and `db` parameters are not defined.
+			ValueError: If `adata` is defined but not an instance of `scanpy.AnnData`.
+			ValueError: If `db` is defined but the file does not exist.
+		"""
+
 		if self.adata is None and self.db is None:
 			raise ValueError('Both adata and db parameters not defined. Select an option')
 		if self.adata is not None:
@@ -58,32 +69,102 @@ class AnnSQL:
 				raise ValueError('The db provided doesn\'t exist. Please check the path')
 
 	def open_anndata(self,adata):
+		"""
+		Opens an AnnData object.
+
+		Parameters:
+			adata (AnnData or str): The AnnData object to be opened or the file path to the AnnData object.
+
+		Returns:
+			adata (AnnData): The opened AnnData object instance.
+		"""
+
 		if not isinstance(adata, sc.AnnData) and isinstance(adata, str):	
 			return sc.read_h5ad(adata)
 		else:
 			return adata
 			
 	def open_db(self):
+		"""
+		Opens a connection to the database specified by `self.db`.
+		If a connection is already open, it will be closed before opening a new one.
+
+		Parameters:
+			None
+		Returns:
+			None
+		"""
+
 		if self.db is not None:
 			self.conn = duckdb.connect(self.db)
 			self.is_open = True
 
 	def close_db(self):
+		"""
+		Closes the database connection.
+		If the database connection is open, this method closes the connection and sets the `is_open` attribute to False.
+
+		Parameters:
+			None
+		Returns:
+			None
+		"""
+
 		if self.db is not None:
 			self.conn.close()
 			self.is_open = False
 
 	def asql_register(self, table_name, df):
+		"""
+		Registers a table in the database from a  pandas df.
+
+		Parameters:
+			table_name (str): The name of the table to be registered.
+			df (pandas.DataFrame): The DataFrame containing the data to be registered.
+		Returns:
+			None
+		"""
+
 		self.open_db()
 		self.conn.register(table_name, df)
 		self.close_db()
 
 	def build_db(self):
+		"""
+		Builds the database connection and initializes the necessary tables and indexes.
+		
+		Parameters:
+			None
+		Returns:
+			None
+		"""
 		self.conn = duckdb.connect(':memory:')
 		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers, print_output=self.print_output)
 		self.conn = db.conn
 
 	def query(self, query, return_type='pandas'):
+		"""
+		Executes the given SQL query and returns the result based on the specified return type.
+
+		Parameters:
+			query (str): The SQL query to be executed.
+			return_type (str, optional): The desired return type of the query result. Options are 'pandas', 'adata', and 'parquet'. Defaults to 'pandas'.
+
+		Returns:
+			results (pandas df, AnnData, or parquet): The result of the query based on the specified return type.
+
+		Raises:
+			ValueError: If the return_type is not one of 'pandas', 'adata', or 'parquet'.
+			ValueError: If the query contains 'UPDATE', 'DELETE', or 'INSERT' statements. Use update_query() instead for such statements.
+		
+		Examples:
+			>>> # Query the X layer and return the result as a pandas DataFrame
+			>>> asql.query("SELECT * FROM X LIMIT 5")
+			>>> # Query the X layer and return the result as an AnnData object
+			>>> asql.query("SELECT * FROM X LIMIT 5", return_type='parquet')
+			
+		"""
+
 		if return_type not in ['pandas', 'adata', 'parquet']:
 			raise ValueError('return_type must be either pandas, parquet or adata')
 		if 'UPDATE' in query.upper() or 'DELETE' in query.upper() or 'INSERT' in query.upper():
@@ -111,6 +192,19 @@ class AnnSQL:
 			return self.adata[result_df["cell_id"]]
 
 	def query_raw(self, query):
+		"""
+		Executes a raw SQL query on the database.
+
+		Parameters:
+			query (str): The SQL query to be executed.
+
+		Returns:
+			result (DuckDb Object): The result of the query execution.
+
+		Examples:
+			>>> asql.query_raw("SELECT * FROM X LIMIT 5")
+		"""
+
 		self.open_db()
 		if self.memory_limit is not None:			
 			self.conn.execute(f"SET memory_limit = '{self.memory_limit}';")
@@ -119,6 +213,24 @@ class AnnSQL:
 		return result
 
 	def update_query(self, query, suppress_message=False):
+		"""
+		Executes an update query on the database.
+
+		Parameters:
+			query (str): The SQL query to be executed.
+			suppress_message (bool, optional): Whether to suppress the success message. Defaults to False.
+
+		Raises:
+			ValueError: If the query contains 'SELECT' or 'DELETE' statements.
+
+		Returns:
+			result (DuckDb Object): The result of the query execution.
+		
+		Examples:
+			>>> asql.update_query("UPDATE obs SET cell_type = 'Dendritic' WHERE leiden_cluster = 0")
+		"""
+
+
 		if 'SELECT' in query.upper() or 'DELETE' in query.upper():
 			raise ValueError('SELECT detected. Please use query() instead')
 		try:
@@ -131,6 +243,23 @@ class AnnSQL:
 			print("Update Query Error:", e)
 
 	def delete_query(self, query, suppress_message=False):
+		"""
+		Executes a delete query on the database.
+
+		Parameters:
+			query (str): The delete query to be executed.
+			suppress_message (bool, optional): Whether to suppress the success message. Defaults to False.
+
+		Raises:
+			ValueError: If the query contains 'SELECT' keyword.
+
+		Returns:
+			result (DuckDb Object): The result of the delete.
+
+		Examples:
+			>>> asql.delete_query("DELETE FROM X WHERE cell_id IN (SELECT cell_id FROM obs WHERE cell_type = 'Dendritic')")	
+		"""
+
 		if 'DELETE' not in query.upper():
 			raise ValueError('SELECT detected. Please use query() instead')
 		try:
@@ -143,18 +272,44 @@ class AnnSQL:
 			print("Delete Query Error:", e)
 
 	def show_tables(self):
+		"""
+		A simple helper method to retrieve a list of table names from the 'main' schema in the database.
+
+		Returns:
+			result (pandas.DataFrame): A DataFrame containing the table names.
+
+		Examples:
+			>>> asql.show_tables()
+		"""
+
 		self.open_db()
 		result = self.conn.execute("SELECT table_name FROM information_schema.tables  WHERE table_schema='main'").df()
 		self.close_db()
 		return result
 
 	def show_settings(self):
+		"""
+		A simple helper method to retrieve a list of the duckdb database settings
+
+		Returns:
+			result (pandas.DataFrame): A DataFrame containing the configuration options.
+
+		Examples:
+			>>> asql.show_settings()
+		"""
+
 		self.open_db()
 		result = self.conn.execute("SELECT * FROM duckdb_settings()").df()
 		self.close_db()
 		return result
 
 	def export_parquet(self):
+		"""
+		This method exports all tables as parquet files.
+		This method retrieves the list of tables using the `show_tables` method and exports each table as a parquet file.
+		The parquet files are saved in the 'parquet_files' directory.
+		"""
+
 		tables = self.show_tables()
 		if not os.path.exists("parquet_files"):
 			os.mkdir("parquet_files")
@@ -167,9 +322,37 @@ class AnnSQL:
 		logging.info("All tables exported as parquet files in the 'parquet_files' directory")
 	
 	def replace_special_chars(self, string):
+		"""
+		Replaces special characters in a string with underscores. Is useful when creating tables from AnnData objects as certain characters in gene names can cause issues with column names.
+
+		Parameters:
+			String (str): The input string.
+
+		Returns:
+			String (str): The modified string with special characters replaced by underscores.
+		"""
+
 		return string.replace("-", "_").replace(".", "_")
 
 	def expression_normalize(self, total_counts_per_cell=10000, chunk_size=200, print_progress=False):
+		"""
+		Normalize the expression values in the dataset to a desired total counts per cell.
+
+		Parameters:
+			total_counts_per_cell (int, optional): The desired total counts per cell after normalization. Defaults to 10000.
+			chunk_size (int, optional): The number of genes to process in each chunk. Defaults to 200.
+			print_progress (bool, optional): Whether to print progress information. Defaults to False.
+
+		Notes:
+			- This method normalizes the expression values in the dataset by dividing each gene's expression value by the total counts and then multiplying it by the desired total counts per cell.
+			- The normalization is performed in chunks to decrease memory usage.
+			- If 'total_counts' column is not found in the dataset, it will be calculated using the calculate_total_counts method.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.expression_normalize(total_counts_per_cell=10000, chunk_size=100, print_progress=True)
+		"""
+
 		self.check_chunk_size(chunk_size)
 		# if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
 		# 	print("Total counts not found...")
@@ -194,6 +377,31 @@ class AnnSQL:
 		print("Expression Normalization Complete")
 
 	def expression_log(self, log_type="LN", chunk_size=200, print_progress=False):
+		"""
+		Log transform the expression values of genes in the dataset.
+
+		Parameters:
+			log_type (str, optional): The type of logarithm to use for the transformation. 
+				Possible values are "LN" (natural logarithm), "LOG" (base 10 logarithm), 
+				"LOG2" (base 2 logarithm), and "LOG10" (base 10 logarithm). 
+				Defaults to "LN".
+			chunk_size (int, optional): The number of genes to process in each chunk. 
+				Defaults to 200.
+			print_progress (bool, optional): Whether to print progress information during the transformation. 
+				Defaults to False.
+
+		Notes:
+			- This method log-transforms the expression values of genes in the dataset.
+			- The log transformation is performed in chunks to decrease memory usage.
+			- The log transformation is applied to each gene individually.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.expression_log(log_type="LN", chunk_size=100)
+		"""
+
+
+
 		#log_type can be LN, LOG (LOG2 alias), LOG2, LOG10
 		self.check_chunk_size(chunk_size)
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
@@ -216,6 +424,23 @@ class AnnSQL:
 
 	
 	def calculate_total_counts(self, chunk_size=200, print_progress=False):
+		"""
+		Calculate the total counts for each gene in the X table and update the total_counts column.
+		Also update the total_counts column in the obs table based on the corresponding values in the X table.
+
+		Parameters:
+			chunk_size (int): The number of gene names to process in each chunk. Default is 200.
+			print_progress (bool): Whether to print progress information during the calculation. Default is False.
+
+		Notes:
+			- This method calculates the total counts for each gene in the X table by summing the expression values of all cells for each gene.
+			- The method also updates the 'total_counts' column in the obs table based on the corresponding values in the X table.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_total_counts(chunk_size=100, print_progress=True)
+		"""
+
 		self.check_chunk_size(chunk_size)
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
 		
@@ -240,6 +465,23 @@ class AnnSQL:
 		print("Total Counts Calculation Complete")
 
 	def calculate_gene_counts(self, chunk_size=200, print_progress=False, gene_field="gene_names"):
+		"""
+		Calculate gene counts and gene means for each gene in the var table.
+
+		Parameters:
+			chunk_size (int): The number of genes to process in each chunk. Default is 200.
+			print_progress (bool): Whether to print progress information. Default is False.
+			gene_field (str): The name of the column in the var table that contains gene names. Default is "gene_names".
+
+		Notes:
+			- This method calculates the gene counts and gene means for each gene in the var table by summing the expression values of all cells for each gene.
+			- The method updates the 'gene_counts' and 'gene_mean' columns in the var table based on the calculated values.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_gene_counts(chunk_size=100)
+		"""
+		
 		self.check_chunk_size(chunk_size)
 		gene_names_df = self.query(f"SELECT {gene_field} FROM var")
 		gene_names_df["gene_counts"] = 0.0	
@@ -296,6 +538,30 @@ class AnnSQL:
 
 
 	def calculate_variable_genes(self, chunk_size=100, print_progress=False, gene_field="gene_names", save_var_names=True,save_top_variable_genes=2000):
+		"""
+		Calculates variable genes based on the given parameters. This method uses the duckdb VARIANCE function to calculate the variance of each gene 
+		in the X table and updates the 'variance' column in the var table.
+
+		Parameters:
+			chunk_size (int, optional): The size of each chunk for processing. Defaults to 100.
+			print_progress (bool, optional): Whether to print progress while processing. Defaults to False.
+			gene_field (str, optional): The field name for gene names in the database table. Defaults to "gene_names".
+			save_top_variable_genes (int, optional): The number of top variable genes to save. Defaults to 2000.
+			save_var_names (bool, optional): Whether to save the variable gene names to the X table and remove all others. Defaults to True.
+
+		Notes:
+			- This method calculates the variance of each gene in the X table using the VARIANCE function.
+			- The method updates the 'variance' column in the var table based on the calculated values.
+			- If 'variance' column is not found in the var table, it will be created.
+			- If 'variance' column already exists in the var table, it will be updated.
+			- If 'variance' column is not found in the var table, it will be created.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_variable_genes(chunk_size=250)
+		"""
+
+		
 		self.check_chunk_size(chunk_size)
 		gene_names_df = self.query(f"SELECT {gene_field} FROM var")
 		gene_names_df["variance"] = 0.0		
@@ -343,6 +609,30 @@ class AnnSQL:
 
 
 	def build_meta_cells(self, primary_cluster=None, secondary_cluster=None, aggregate_type="AVG", table_name="meta_cells", chunk_size=100, print_progress=False):
+		"""
+		Builds a meta_cells table by aggregating data from the X and obs tables. This will group cells by the primary and secondary cluster columns and aggregate 
+		the expression values using the specified aggregate type.
+
+		Parameters:
+			primary_cluster (str, optional): The name of the primary cluster column. Defaults to None.
+			secondary_cluster (str, optional): The name of the secondary cluster column. Defaults to None.
+			aggregate_type (str, optional): The type of aggregation to perform. Defaults to "AVG".
+			table_name (str, optional): The name of the table to create. Defaults to "meta_cells".
+			chunk_size (int, optional): The size of each processing chunk. Defaults to 100.
+			print_progress (bool, optional): Whether to print progress information. Defaults to False.
+
+		Notes:
+			- This method creates a new table with the specified name and aggregates the data from the X and obs tables based on the primary and secondary cluster columns.
+			- The method aggregates the expression values using the specified aggregate type (e.g., AVG, SUM, etc.).
+			- The method processes the data in chunks to decrease memory usage.
+		
+		The example below builds a table of average expression values of each gene for each cell type.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')
+			asql.build_meta_cells(primary_cluster="cell_type", aggregate_type="AVG", table_name="meta_cells", chunk_size=250)		
+		"""
+
 		self.check_chunk_size(chunk_size)
 		columns = self.query("DESCRIBE X")[1:]["column_name"].tolist()
 		self.query_raw(f"DROP TABLE IF EXISTS {table_name}")
@@ -430,10 +720,39 @@ class AnnSQL:
 
 
 	def check_chunk_size(self, chunk_size):
+		"""
+		Check if the given chunk size is valid. DuckDb imposes a limit of 1000 (999) on the operations that can be performed in a single query. 
+		it can be exceeded in some cases, but it's not recommended and uses more memory. We've implemented a check to ensure the chunk size is 
+		within the limit.
+
+		Parameters:
+			chunk_size (int): The chunk size to be checked.
+
+		Raises:
+			ValueError: If the chunk size is greater than 999.
+		"""
+
 		if chunk_size > 999:
 			raise ValueError('chunk_size must be less than 1000. DuckDb limitation')
 
+	
 	def filter_by_cell_counts(self, min_cell_count=None, max_cell_count=None):
+		"""
+		Filter cells based on their total counts exisiting in the obs table in the total_counts column.
+
+		Parameters:
+			min_cell_count (int, optional): Minimum total count threshold. Cells with total counts less than this value will be removed. Defaults to None.
+			max_cell_count (int, optional): Maximum total count threshold. Cells with total counts greater than this value will be removed. Defaults to None.
+
+		Notes:
+			- This method removes cells from the X and obs tables based on the specified total count thresholds.
+			- If 'total_counts' column is not found in the obs table, it will be calculated using the calculate_total_counts method.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.filter_by_cell_counts(min_cell_count=1000, max_cell_count=45000)
+		"""
+
 		if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
 			print("Total counts not found. Running total counts...")
 			self.calculate_total_counts()
@@ -463,7 +782,38 @@ class AnnSQL:
 						print_progress=False, 
 						zero_center=False, 
 						top_variable_genes=2000,
-						max_cells_memory_threshold=500):
+						max_cells_memory_threshold=5000):
+
+		"""
+		Calculates the Principal Component Analysis (PCA) for the data stored in the specified table. This method uses the top variable genes 
+		based on variance to perform PCA. The PCA calculation is performed as a hybrid of SQL and python. 
+
+		Parameters:
+			n_pcs (int, default=50): Number of principal components to calculate.
+			table_name (str, default="X"): Name of the table containing the data.
+			chunk_size (int, default=100): Size of the data chunks to process.
+			print_progress (bool, default=False): Whether to print progress messages.
+			zero_center (bool, default=False): Whether to zero-center the data before PCA.
+			top_variable_genes (int, default=2000): Number of top variable genes to use for PCA.
+			max_cells_memory_threshold (int, default=5000): Maximum number of cells to hold in memory before using SQL. Beyond this threshold, covariance matrix calculation is done in SQL to be more memory efficient.
+
+		Functionality:
+			1. Checks if the specified table exists. If not, raises a ValueError.
+			2. Checks if the 'variance' column exists in the var table. If not, calls calculate_variable_genes to compute it.
+			3. Retrieves the top variable genes based on variance.
+			4. Constructs a query to standardize the data, with an option for zero-centering.
+			5. Creates a wide standardized table.
+			6. If the number of cells is greater than the specified threshold, calculates the covariance matrix using SQL.
+			7. Calculates the eigenvalues and eigenvectors using numpy as this is a small matrix and does not require SQL.
+			8. Creates a table for the eigenvalues.
+			9. Creates a table for the eigenvectors.
+			10. Creates a table for the principal components.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_pca(n_pcs=50, table_name="X", chunk_size=250, zero_center=False, top_variable_genes=2000, max_cells_memory_threshold=5000)
+		"""
+
 
 		#does the table exist?
 		if table_name not in self.show_tables()['table_name'].tolist():
@@ -653,6 +1003,22 @@ class AnnSQL:
 
 
 	def save_highly_variable_genes(self, top_variable_genes=1000):
+		"""
+		Save only the top highly variable genes from the 'var' table into table 'X'.
+		
+		Parameters:
+			top_variable_genes (int): The number of top variable genes to save. Default is 1000.
+
+		Notes:
+			- The 'X' table is updated with only the top highly variable genes.
+			- Consider running save_raw() before running this method.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.save_highly_variable_genes(top_variable_genes=1000)
+		"""
+
+		
 		genes = self.query(f"SELECT gene_names FROM var ORDER BY variance DESC LIMIT {top_variable_genes}")
 		genes = genes['gene_names'].tolist()
 
@@ -670,6 +1036,22 @@ class AnnSQL:
 
 
 	def filter_by_gene_counts(self, min_gene_counts=None, max_gene_counts=None):
+		"""
+		Filter the data by gene counts. This method removes cells with gene counts below the minimum threshold and above the maximum threshold.
+
+		Parameters:
+			min_gene_counts (int, optional): The minimum gene counts threshold. Genes with counts below this threshold will be removed. Defaults to None.
+			max_gene_counts (int, optional): The maximum gene counts threshold. Genes with counts above this threshold will be removed. Defaults to None.
+
+		Notes:
+			- This method removes genes with counts below the minimum threshold and above the maximum threshold from the 'X' table.
+			- The method also updates the 'var' table to reflect the changes in the 'X' table
+			- Consider running save_raw() before running this method.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.filter_by_gene_counts(min_gene_counts=200, max_gene_counts=45000)
+		"""
 
 		if min_gene_counts != None and max_gene_counts == None:
 			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts}")
@@ -707,17 +1089,49 @@ class AnnSQL:
 
 		
 	def return_pca_scores_matrix(self):		
+		"""
+		Returns the PCA scores matrix in the form of a matrix with cell IDs as index, PCs as columns, and PC scores as values.
+
+		Raises:
+			ValueError: If the 'PC_scores' table is not found. Run calculate_pca() first.
+
+		Returns:
+			result (DataFrame): The PCA scores matrix with cell IDs as index, PCs as columns, and PC scores as values.
+		"""
+
 		if 'PC_scores' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('PC_scores table not found. Run calculate_pca() first')
 
 		return self.query("SELECT * FROM PC_scores").pivot(index="cell_id", columns="pc", values="pc_score").fillna(0)
 
 	def save_raw(self, table_name="X_raw"):
+		"""
+		Saves the raw data from the 'X' table into a new table named 'X_raw'. Helps in preserving the raw data before any modifications.
+
+		Parameters:
+			table_name (str): The name of the table to save the raw data into. Defaults to "X_raw".
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.save_raw()
+		"""
+
 		self.query_raw(f"DROP TABLE IF EXISTS X_raw;")
 		self.query_raw(f"CREATE TABLE X_raw AS SELECT * FROM X;")
 		print("X_raw table created from X.")
 
 	def raw_to_X(self, table_name="X_raw"):
+		"""
+		Replaces the 'X' table with the contents of the specified raw data table and updates the 'var' table with gene names.
+
+		Parameters:
+			table_name (str): The name of the table containing the raw data to be renamed to 'X'. Defaults to "X_raw".
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.raw_to_X()
+		"""
+
 		self.query_raw(f"DROP TABLE IF EXISTS X;")
 		self.query_raw(f"ALTER TABLE {table_name} RENAME TO X;")
 
@@ -741,6 +1155,24 @@ class AnnSQL:
 		print("X table created from X_raw. Please note: X_raw table has been deleted.")
 
 	def pca_variance_explained(self, show_plot=True, return_values=False):
+		"""
+		Calculate the variance explained by each principal component in a PCA analysis.
+
+		Parameters:
+			show_plot (bool, optional): Whether to display a bar plot showing the variance explained by each principal component. Default is True.
+			return_values (bool, optional): Whether to return the variance explained values as a pandas Series. Default is False.
+
+		Raises:
+			ValueError: If PCA has not been calculated yet. Run calculate_pca() first.
+
+		Notes:
+			- The variance explained by each principal component is calculated as the ratio of the eigenvalue of the component to the total sum of eigenvalues.
+			- Plotting the variance explained by each principal component can help in determining the number of components to retain in the analysis.
+
+		Returns:
+			pandas Series (optional): The variance explained by each principal component, if return_values is True.
+		"""
+
 		if 'PC_eigenvalues' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('PCA not found. Run calculate_pca() first')
 
@@ -764,6 +1196,24 @@ class AnnSQL:
 			return eigen_df['variance_explained']
 
 	def plot_pca(self,PcX=1, PcY=2):
+		"""
+		Plots the PCA scores for two principal components.
+
+		Parameters:
+			PcX (int): The index of the first principal component (default: 1).
+			PcY (int): The index of the second principal component (default: 2).
+
+		Notes: 
+			- Indexes are 1-based. (offset by +1 for convienence, or confusion. Whichever way you look at it.)
+
+		Raises:
+			ValueError: If 'PC_eigenvalues' table is not found. Run calculate_pca() first.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_pca(PcX=1, PcY=2)		
+		"""
+
 		if 'PC_eigenvalues' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('PCA not found. Run calculate_pca() first')
 
@@ -781,11 +1231,25 @@ class AnnSQL:
 
 
 	def plot_highly_variable_genes(self, top_variable_genes=2000):
+		"""
+		Plots the highly variable genes based on their variance and mean expression.
+
+		This method checks if the 'variance' column exists in the 'var' table. If not, it calculates the variable genes.
+		It then ensures the 'hv' column exists in the 'var' table, creating or resetting it as necessary.
+		Finally, it updates the 'hv' column to highlight the top variable genes and plots the variance vs mean expression.
+
+		Parameters:
+			top_variable_genes (int): The number of top variable genes to highlight. Default is 2000.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_highly_variable_genes(top_variable_genes=2000)
+		"""
 
 		#does the variance column exist in var?
 		if 'variance' not in self.query("SELECT * FROM var LIMIT 1").columns:
 			print("Variance not found. Running calculate_variable_genes...")
-			self.calculate_variable_genes(chunk_size=100, print_progress=False, 
+			self.calculate_variable_genes(chunk_size=200, print_progress=False, 
 										save_var_names=False, save_top_variable_genes=top_variable_genes)
 
 		#does the column hv exist in var?
@@ -802,6 +1266,18 @@ class AnnSQL:
 		g.set_ylabel("Variance (log10)")
 
 	def plot_total_counts(self):
+		"""
+		Plots the total UMI counts for each cell.
+
+		Notes:
+			- This method plots a violin plot showing the distribution of total UMI counts across cells.
+			- The 'total_counts' column is used from the 'obs
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_total_counts()
+		"""
+
 		if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
 			print("Total counts not found. Run method calculate_total_counts() first.")
 
@@ -810,6 +1286,18 @@ class AnnSQL:
 		g.set_xlabel("Total UMI Counts")
 		
 	def plot_gene_counts(self):
+		"""
+		Plots the gene counts for each cell.
+
+		Notes:
+			- This method plots a violin plot showing the distribution of gene counts across cells.
+			- The 'gene_counts' column is used from the 'var' table.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_gene_counts()
+		"""
+
 		if 'gene_counts' not in self.query("SELECT * FROM var LIMIT 1").columns:
 			print("Gene counts not found. Run method calculate_gene_counts() first.")
 
@@ -819,6 +1307,25 @@ class AnnSQL:
 	
 
 	def calculate_umap(self, n_neighbors=15, min_dist=0.5, n_components=2, metric='euclidean'):
+		"""
+		Calculates the Uniform Manifold Approximation and Projection (UMAP) for the data stored in the 'PC_scores' table.
+
+		Parameters:
+			n_neighbors (int, default=15): The size of local neighborhood (in terms of number of neighboring sample points) used for manifold approximation.
+			min_dist (float, default=0.5): The effective minimum distance between embedded points.
+			n_components (int, default=2): The number of dimensions of the UMAP embedding.
+			metric (str, default='euclidean'): The metric to use for distance computation.
+		
+		Notes:
+			- The 'PC_scores' table is used to calculate the UMAP embedding.
+			- The UMAP embedding is saved in a new table named 'umap_embeddings'.
+			- The 'umap_embeddings' table contains the UMAP1 and UMAP2 coordinates for each cell.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_umap(n_neighbors=15, min_dist=0.5, n_components=2, metric='euclidean')
+		"""
+
 		pca_scores = self.return_pca_scores_matrix().values
 		reducer = umap.UMAP(n_neighbors=n_neighbors,
 							min_dist=min_dist,
@@ -836,6 +1343,30 @@ class AnnSQL:
 
 
 	def plot_umap(self, color_by=None, palette='viridis', title=None, legend_location=None, annotate=False):
+		"""
+		Plots the UMAP projection of the data from the 'umap_embeddings' table.
+
+		Parameters:
+			color_by (str, optional): The column name in the 'obs' or 'var' table to use for coloring the cells. Defaults to None.
+			palette (str, optional): The color palette to use for coloring the cells. Defaults to 'viridis'.
+			title (str, optional): The title of the plot. Defaults to None.
+			legend_location (str, optional): The location of the legend in the plot. Defaults to None.
+			annotate (bool, optional): Whether to annotate the plot with cluster centers. Defaults to False.
+		
+		Raises:
+			ValueError: If 'umap_embeddings' table is not found.
+
+		Notes:
+			- The 'umap_embeddings' table is used to plot the UMAP projection.
+			- The 'color_by' parameter can be a column name in the 'obs' or 'var' table to color the cells based on that column.
+			- The 'palette' parameter can be any valid seaborn color palette.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_umap(color_by='leiden_clusters' title='UMAP Projection', annotate=True)
+		"""
+
+
 		if 'umap_embeddings' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('UMAP embedding not found. Run calculate_umap() first')
 		
@@ -879,6 +1410,25 @@ class AnnSQL:
 
 
 	def calculate_leiden_clusters(self, resolution=1.0, n_neighbors=30):
+		"""
+		Performs Leiden clustering on the data using the UMAP embeddings.
+
+		Parameters:
+			resolution (float, default=1.0): The resolution parameter for the Leiden algorithm.
+			n_neighbors (int, default=30): The size of the neighborhood to consider for the Leiden algorithm.
+		
+		Raises:
+			ValueError: If 'umap_embeddings' table is not found. Run calculate_umap() first.
+
+		Notes:
+			- The Leiden clustering results are saved in the 'obs' table under the column 'leiden_clusters'.
+			- The 'leiden_clusters' column is cast as a string for plotting purposes.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_leiden_clusters(resolution=1.0, n_neighbors=30)
+		"""
+
 
 		if 'PC_scores' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('PCA scores table not found. Run calculate_pca() first')
@@ -922,7 +1472,25 @@ class AnnSQL:
 
 
 	def add_observations(self, obs_key, obs_values={}, match_on="ledien_clusters"):
+		"""
+		Adds observation values to the 'obs' table based on a key-value pair.
+
+		Parameters:
+			obs_key (str): The key to add to the 'obs' table.
+			obs_values (dict): A dictionary of cell IDs and corresponding values for the observation key.
+			match_on (str, optional): The column in the 'obs' table to match the cell IDs on. Defaults to 'leiden_clusters'.
 		
+		Notes:
+			- The 'obs' table is updated with the new observation key and values.
+			- The 'obs_values' dictionary should have cell IDs as keys and the corresponding values for the observation key.
+			- The 'match_on' parameter specifies the column in the 'obs' table to match the cell IDs on.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')	
+			cell_annotations = {'0': 'T cell', '1': 'B cell'}		
+			asql.add_observations(obs_key='cell_type', match_on="leiden_clusters" obs_values=cell_annotations)
+		"""
+
 		#if the obs_key doesn't exist, add it.
 		if obs_key not in self.query("SELECT * FROM obs LIMIT 1").columns:
 			self.query_raw(f"ALTER TABLE obs ADD COLUMN {obs_key} TEXT;")
@@ -944,6 +1512,19 @@ class AnnSQL:
 		return tdist.cdf(t_val, df)
 
 	def adjusted_p_value(self):
+		"""
+		Adjusts the p-values for multiple testing using the Benjamini-Hochberg procedure. 
+
+		Notes:
+			- The adjusted p-values are saved in the 'diff_expression' table under the column 'adj_pval'.
+			- The 'diff_expression' table must have the columns 'gene' and 'pval' for this method to work.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.adjusted_p_value()
+		"""
+
+
 		results = self.query("SELECT * FROM diff_expression")
 		adj_p_val_results = stats.false_discovery_control(results["pval"].to_numpy())
 		results
@@ -965,6 +1546,32 @@ class AnnSQL:
 		
 
 	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, name="None", drop_table=False, marker_genes=False):
+		"""
+		Calculates differential expression between two groups of cells based on the 'X' table and the 'obs' table. This is performed using a t-test.
+
+		Parameters:
+			obs_key (str): The observation key to use for grouping the cells.
+			group1_value (str): The value of the observation key for group 1.
+			group2_value (str): The value of the observation key for group 2.
+			name (str, optional): The name of the differential expression analysis. Defaults to "None".
+			drop_table (bool, optional): Whether to drop the 'diff_expression' table if it already exists. Defaults to False.
+			marker_genes (bool, optional): Whether to calculate marker genes for the groups. This is used for the calculate_marker_genes method. Defaults to False.
+		
+		Raises:
+			ValueError: If 'obs_key', 'group1_value', and 'group2_value' are not provided.
+			ValueError: If 'obs_key' is not provided for marker_genes=True.
+		
+		Notes:
+			- The differential expression results are saved in the 'diff_expression' table.
+			- The 'diff_expression' table contains the columns 'name', 'group1', 'group2', 'gene', 'tstat', 'logfc', 'df', 'pval', and 'adj_pval'.
+			- The 'name' parameter is used to identify the differential expression analysis.
+			- The 'marker_genes' parameter can be set to True to calculate marker genes for the groups.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_differential_expression(obs_key='leiden_clusters', group1_value='0', group2_value='1')
+		"""
+
 
 		if marker_genes == False and (group1_value is None or group2_value is None or obs_key is None):
 			raise ValueError("obs_key, group1 and group2 must be provided.")
@@ -1033,6 +1640,27 @@ class AnnSQL:
 		print(f"DE Calculation Complete.")
 
 	def plot_differential_expression(self, pvalue_threshold=0.05, logfc_threshold=1.0, group1=None, group2=None, title=None, filter_name=None):
+		"""
+		Plots the differential expression as a volcano plot from the 'diff_expression' table.
+
+		Parameters:
+			pvalue_threshold (float, optional): The p-value threshold for significance. Default is 0.05.
+			logfc_threshold (float, optional): The log fold change threshold for significance. Default is 1.0.
+			group1 (str, optional): The value of group 1 for differential expression. Defaults to None.
+			group2 (str, optional): The value of group 2 for differential expression. Defaults to None.
+			title (str, optional): The title of the plot. Defaults to None.
+			filter_name (str, optional): The name of the differential expression analysis to filter on. Defaults to None.
+		
+		Notes:
+			- The 'diff_expression' table must contain the columns 'logfc', 'adj_pval', 'group1', and 'group2'.
+			- The volcano plot shows the log fold change on the x-axis and the negative log10 of the adjusted p-value on the y-axis.
+			- Significant genes are highlighted in red based on the p-value and log fold change thresholds.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=1.0, group1='0', group2='1', title='DE Analysis')
+		"""
+
 
 		if group1 is None or group2 is None:
 			df = self.query("SELECT * FROM diff_expression")
@@ -1059,6 +1687,22 @@ class AnnSQL:
 
 
 	def calculate_marker_genes(self, obs_key="leiden_clusters", table_name="X"):
+		"""
+		Calculates marker genes for each group based on differential expression analysis.
+
+		Parameters:
+			obs_key (str): The observation key to use for grouping the cells.
+			table_name (str, optional): The name of the table to use for the analysis. Defaults to "X".
+		
+		Notes:
+			- This method calculates marker genes for each group based on the differential expression analysis  using a t-test.
+			- The marker genes are saved in the 'diff_expression' table under the name 'Markers'.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.calculate_marker_genes(obs_key='leiden_clusters', table_name='X')
+		"""
+
 		self.open_db()
 		groups = self.conn.execute(f"SELECT DISTINCT {obs_key} FROM obs").df()[obs_key].values.tolist()
 		for group in groups:
@@ -1069,6 +1713,25 @@ class AnnSQL:
 
 
 	def plot_marker_genes(self, obs_key="leiden_clusters", columns=2):
+		"""
+		Plots the top marker genes for each cluster based on the differential expression analysis.
+
+		Parameters:
+			obs_key (str): The observation key to use for grouping the cells.
+			columns (int, optional): The number of columns in the plot. Defaults to 2.
+
+		Raises:
+			ValueError: If 'diff_expression' table is not found. Run calculate_marker_genes() first.
+
+		Notes:
+			- This method plots the top marker genes for each cluster based on the differential expression analysis.
+			- The 'diff_expression' table must contain the columns 'gene', 'tstat', and 'adj_pval'.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.plot_marker_genes(obs_key='leiden_clusters', columns=2)
+		"""
+
 		if 'diff_expression' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('Differential expression not found. Run calculate_differential_expression() first')
 		
@@ -1105,6 +1768,25 @@ class AnnSQL:
 		plt.show()
 
 	def get_marker_genes(self, obs_key="leiden_clusters", group=None):
+		"""
+		Returns the top marker genes for a specific group based on the differential expression analysis. 
+
+		Parameters:
+			obs_key (str): The observation key to use for grouping the cells.
+			group (str): The value of the observation key for the group.
+		
+		Raises:
+			ValueError: If 'diff_expression' table is not found. Run calculate_marker_genes() first.
+			ValueError: If 'group' is not provided.
+
+		Returns:
+			pandas DataFrame: The top marker genes for the specified group.
+
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.get_marker_genes(obs_key='leiden_clusters', group='0')
+		"""
+
 		if group is None:
 			raise ValueError("Group must be provided.")
 		if 'diff_expression' not in self.show_tables()['table_name'].tolist():
@@ -1120,6 +1802,21 @@ class AnnSQL:
 
 
 	def write_adata(self, filename="export.h5ad"):
+		"""
+		Converts a on-disk AnnSQL object to an AnnData object and writes it to a file.
+
+		Parameters:
+			filename (str): The name of the file to write the AnnData object to. Defaults to "export.h5ad".
+		
+		Notes:
+			- This method writes the AnnData object to a file in the HDF5 format.
+			- The AnnData object contains the 'X', 'obs', 'var', 'PC_scores', 'diff_expression', and 'umap_embeddings' tables.
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')			
+			asql.write_adata(filename='pbmc.h5ad')
+		"""
+
 		import anndata as ad
 		adata = ad.AnnData(X=self.query("SELECT * EXCLUDE(cell_id) FROM X"), 
 							obs=self.query("SELECT * FROM obs"))

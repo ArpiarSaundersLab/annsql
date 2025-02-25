@@ -1,11 +1,9 @@
-########################################################
-# Annsql uses the duckdb api to build the database and 
-# perform operations. You can access the .asql file in
-# R by simply installing the duckdb package and loading
-# the library and database. Once you've loaded the db
-# you can run any query you'd like.
-########################################################
+# Opening ASQL Databases in R
+Annsql uses the duckdb api to build the database and perform operations. You can access the .asql file in R by simply installing the duckdb package and loading the library and database. Once you've loaded the db you can run any query your heart desires.
+<br>
+<br>
 
+```
 #install the duckdb api dependency and load the library
 if (!requireNamespace("duckdb", quietly = TRUE)) {
 	install.packages("duckdb")
@@ -25,7 +23,4 @@ print(results)
 
 #don't forget to close the door
 dbDisconnect(con)
-
-
-
-
+```
