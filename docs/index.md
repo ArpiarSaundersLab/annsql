@@ -1,16 +1,13 @@
 <center><img src="https://github.com/ArpiarSaundersLab/annsql/raw/main/examples/images/logo.png" width=500></center>
 <br />
-
-# Query AnnData Objects with SQL
-The AnnSQL package enables SQL-based queries on [AnnData](https://anndata.readthedocs.io/en/latest/) objects, returning results as either a [Pandas](https://pandas.pydata.org/) DataFrame, an AnnData object, or a [Parquet](https://parquet.apache.org/) file that can easily be imported into a variety of data analysis tools. Behind the scenes, AnnSQL converts the layers of an AnnData object into a relational [DuckDB](https://duckdb.org/) database. Each layer is stored as an individual table, allowing for simple or complex SQL queries, including table joins.
-
-To get started, see the usage notes below or refer to the example scripts in the `examples` directory.
+The Python based AnnSQL package enables SQL-based queries on [AnnData](https://anndata.readthedocs.io/en/latest/) objects, returning results as either a [Pandas](https://pandas.pydata.org/) DataFrame, an AnnData object, or a [Parquet](https://parquet.apache.org/) file that can easily be imported into a variety of data analysis tools. Behind the scenes, AnnSQL converts the layers of an AnnData object into a relational [DuckDB](https://duckdb.org/) database. Each layer is stored as an individual table, allowing for simple or complex SQL queries, including table joins.
 
 ## Features
 - Query AnnData with **SQL**.
+- **Fast** for complex queries and aggregative functions.
 - Return query results as **Pandas** Dataframes, **Parquet** files, or **AnnData** objects.
 - Create in-memory or on-disk databases directly from AnnData objects.
-- **Fast** for complex queries and aggregative functions.
+- Open AnnSQL databases in **R**. *No conversions necessary*. <a href="inteRoperability/">Learn more</a>
 
 ## Installation
 **Note:** Higher memory consumption using Apple M-Series is expected when building AnnSQL databases. Please use the *make_buffer_file* parameter when using the *MakeDb* class if you experience memory related issues. 
