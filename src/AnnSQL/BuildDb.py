@@ -12,7 +12,9 @@ import gc
 import psutil
 import warnings
 from memory_profiler import profile
+from scipy.sparse import issparse
 warnings.filterwarnings('ignore')
+import sys
 
 class BuildDb:
 	
@@ -26,7 +28,7 @@ class BuildDb:
 		'set', 'table', 'then', 'to', 'true', 'union', 'unique', 'update', 'values', 'when', 'where'
 	]
 
-	def __init__(self, conn=None, db_path=None, db_name=None, adata=None, create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,	make_buffer_file=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"]):
+	def __init__(self, conn=None, db_path=None, db_name=None, adata=None, create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=5000,	make_buffer_file=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], db_config={}):
 		"""
 		Initializes the BuildDb object. This object is used to create a database from an AnnData object byway of the MakeDb object.
 
@@ -59,6 +61,7 @@ class BuildDb:
 		self.chunk_size = chunk_size
 		self.make_buffer_file = make_buffer_file
 		self.print_output = print_output
+		self.db_config = db_config
 		self.build()
 		if "uns" in self.layers: #not recommended for large datasets
 			self.build_uns_layer()
@@ -91,7 +94,8 @@ class BuildDb:
 		var_names_df.columns = ['gene']
 		obs_df.columns = ['cell_id'] + list(obs_df.columns[1:])
 		
-		#The var_names_make_unique appears doesn't handle case sensitively. SQL requires true unique column names
+		#The var_names_make_unique appears doesn't handle case sensitively. SQL requires true unique column names with case sensitivity
+		#AnnData would treat something like Gad1 and gad1 as different genes
 		var_names_upper = pd.DataFrame(var_names).apply(lambda x: x.str.upper())
 		var_names = list(var_names)
 		start_time = time.time()
@@ -105,6 +109,7 @@ class BuildDb:
 					unique_counter[var_names_upper.iloc[i][0] ] = 1
 					var_names[i] = var_names[i] + f"_{unique_counter[var_names_upper.iloc[i][0] ]}"
 		end_time = time.time()
+
 		if self.print_output == True:
 			print("Time to make var_names unique: ", end_time-start_time)
 
@@ -119,35 +124,52 @@ class BuildDb:
 		end_time = time.time()
 		if self.print_output == True:
 			print("Time to create X table structure: ", end_time-start_time)
-		
-		#handles backed mode
-		if self.adata.isbacked:
+
+		# self.conn.close()
+		# self.conn = None
+
+		#handles backed mode or if chunk size <= number of rows
+		if self.adata.isbacked or self.chunk_size <= self.adata.shape[0]:
 			if "X" in self.layers:
 				chunk_size = self.chunk_size 
 				if os.path.exists(f"{self.db_path}{self.db_name}_X.parquet"):
 					os.remove(f"{self.db_path}{self.db_name}_X.parquet")
-				print(f"Starting backed mode X table data insert. Total rows: {self.adata.shape[0]}")
+				print(f"Starting chunked mode X table data insert. Total rows: {self.adata.shape[0]}")
 				writer = None
+
 				for start in range(0, self.adata.shape[0], chunk_size):
 					start_time = time.time()
 					end = min(start + chunk_size, self.adata.shape[0])
 
-					X_chunk_df = self.adata[start:end].to_df()
-					X_chunk_df = X_chunk_df.reset_index()
-					X_chunk_df.columns = ['cell_id'] + list(var_names_clean)
+					#reconnect to the database :/
+					#self.conn = duckdb.connect(f"{self.db_path}{self.db_name}.asql", config=self.db_config)
 
+					if issparse(self.adata.X) == True:
+						X_chunk_df = np.array(self.adata[start:end].X.todense())
+					else:
+						X_chunk_df = self.adata[start:end].X
+					
+					X_chunk_df = pl.DataFrame({"cell_id": self.adata.obs.index[start:end],**{name: X_chunk_df[:, idx] for idx, name in enumerate(var_names_clean)}})
+					self.conn.register(f"X_chunk_df", X_chunk_df)
+					
 					if self.make_buffer_file == False:
 						self.conn.execute("BEGIN TRANSACTION;")
 						self.conn.execute("SET preserve_insertion_order = false;")
 						self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df;")
 						self.conn.execute("COMMIT;")
 					else:
-						table = pa.Table.from_pandas(X_chunk_df)
+						table = X_chunk_df.to_arrow()
 						if writer is None:
 							writer = pq.ParquetWriter(f"{self.db_path}{self.db_name}_X.parquet", table.schema)
 						writer.write_table(table)
+					
+					self.conn.unregister(f"X_chunk_df")
+
+					# self.conn.close()
+					# self.conn = None
 
 					del X_chunk_df
+					X_chunk_df = None
 					gc.collect()
 					print(f"Processed chunk {start}-{end-1} in {time.time()-start_time} seconds")
 
@@ -169,8 +191,13 @@ class BuildDb:
 		else:
 			if "X" in self.layers:
 				start_time = time.time()
+				#duckdb gives an error when registering sparse polars dataframe, so we need to convert to dense (for now)
+				if issparse(self.adata.X):
+					if self.print_output == True:
+						print("Converting sparse to dense")
+					self.adata.X = self.adata.X.todense()
 
-				#is this an in-memory database?
+				# #is this an in-memory database?
 				if self.db_path == None:
 					self.conn.register("X", pl.DataFrame({"cell_id": self.adata.obs.index,**{name: self.adata.X[:, idx] for idx, name in enumerate(var_names_clean)}})) 
 				else:
@@ -180,16 +207,6 @@ class BuildDb:
 					self.conn.execute("INSERT INTO X SELECT * FROM X_df")
 					self.conn.execute("COMMIT;")
 
-					# X_df = self.adata.to_df()
-					# X_df = X_df.reset_index(level=0,inplace=True)
-					# X_df.columns = ['cell_id'] + list(var_names_clean)
-					# self.conn.execute("BEGIN TRANSACTION;")
-					# self.conn.execute("SET preserve_insertion_order = false;")
-					# self.conn.execute("INSERT INTO X SELECT * FROM X_df;")
-					# self.conn.execute("COMMIT;")
-					# #del X_df
-
-
 				end_time = time.time()
 				gc.collect()
 				if self.print_output == True:
@@ -198,10 +215,11 @@ class BuildDb:
 				print("Skipping X layer")
 
 
+
 		#these tables usually are not as large as X and can be inserted in one go
 		if "obs" in self.layers:
 			self.conn.register('obs_df', obs_df)
-			self.conn.execute("CREATE TABLE obs AS SELECT * FROM obs_df")
+			self.conn.execute("CREATE OR REPLACE TABLE obs AS SELECT * FROM obs_df")
 			self.conn.unregister('obs_df')
 			if self.print_output == True:
 				print("Finished inserting obs data")
@@ -210,7 +228,7 @@ class BuildDb:
 
 		if "var_names" in self.layers:
 			self.conn.register('var_names_df', var_names_df)
-			self.conn.execute("CREATE TABLE var_names AS SELECT * FROM var_names_df")
+			self.conn.execute("CREATE OR REPLACE TABLE var_names AS SELECT * FROM var_names_df")
 			self.conn.unregister('var_names_df')
 			if self.print_output == True:
 				print("Finished inserting var_names data")
@@ -226,7 +244,7 @@ class BuildDb:
 
 			var = var.reset_index(drop=True)
 			self.conn.register('var_df', var)
-			self.conn.execute("CREATE TABLE var AS SELECT * FROM var_df")
+			self.conn.execute("CREATE OR REPLACE TABLE var AS SELECT * FROM var_df")
 			self.conn.unregister('var_df')
 			if self.print_output == True:
 				print("Finished inserting var data")
@@ -237,7 +255,7 @@ class BuildDb:
 			for key in self.adata.obsm.keys():
 				obsm_df = pd.DataFrame(self.adata.obsm[key])
 				self.conn.register(f'obsm_{key}_df', obsm_df)
-				self.conn.execute(f"CREATE TABLE obsm_{key} AS SELECT * FROM obsm_{key}_df")
+				self.conn.execute(f"CREATE OR REPLACE TABLE obsm_{key} AS SELECT * FROM obsm_{key}_df")
 				self.conn.unregister(f'obsm_{key}_df')
 			if self.print_output == True:
 				print("Finished inserting obsm data")
@@ -249,7 +267,7 @@ class BuildDb:
 			for key in self.adata.varm.keys():
 				varm_df = pd.DataFrame(self.adata.varm[key])
 				self.conn.register(f'varm_{key}_df', varm_df)
-				self.conn.execute(f"CREATE TABLE varm_{key} AS SELECT * FROM varm_{key}_df")
+				self.conn.execute(f"CREATE OR REPLACE TABLE varm_{key} AS SELECT * FROM varm_{key}_df")
 				self.conn.unregister(f'varm_{key}_df')
 			if self.print_output == True:
 				print("Finished inserting varm data")
@@ -260,7 +278,7 @@ class BuildDb:
 			for key in self.adata.obsp.keys():
 				obsp_df = pd.DataFrame(self.adata.obsp[key].toarray())
 				self.conn.register(f'obsp_{key}_df', obsp_df)
-				self.conn.execute(f"CREATE TABLE obsp_{key} AS SELECT * FROM obsp_{key}_df")
+				self.conn.execute(f"CREATE OR REPLACE TABLE obsp_{key} AS SELECT * FROM obsp_{key}_df")
 				self.conn.unregister(f'obsp_{key}_df')
 			if self.print_output == True:
 				print("Finished inserting obsp data")

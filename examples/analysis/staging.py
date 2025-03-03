@@ -6,109 +6,78 @@ import duckdb
 import seaborn as sns
 import matplotlib.pyplot as plt
 from numpy.linalg import eig
-import warnings
+import gc
+import polars as pl
 from memory_profiler import memory_usage
 import os
-warnings.filterwarnings('ignore')
 from AnnSQL import AnnSQL
 from AnnSQL.MakeDb import MakeDb
 from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+from scipy.sparse import issparse
 
 
-# #make the db
-# filepath = "../data/splatter/data_1000_test.h5ad"
-# adata = sc.read_h5ad(filepath)
-# os.remove("../db/data_1000.asql")
-# MakeDb(adata=adata, db_name="data_1000", db_path="../db")
+#TODO debug duckdb memory leak on daabases with >30k genes. 
+#Current fix is to make buffer file. Trading speed for memory until next duckdb release.abs
 
-#open the annsql database
-asql = AnnSQL(db="../db/data_1000.asql")
 
-#save a raw matrix layer
-asql.save_raw()
-#asql.raw_to_X() #can be now used if there's an oopsie
+# adata = sc.datasets.pbmc3k_processed()
+# db_config={
+# 	"memory_limit": "4GB",
+# 	"pandas_analyze_sample": 0,
+# }
 
-#view all tables (layers)
-asql.show_tables()
+# MakeDb(adata=adata, db_path='../db', db_name='pbmc3k', 
+# 		print_output=True, 
+# 		db_config=db_config, 
+# 		chunk_size=1000, 
+# 		delete_existing_db=True,
+# 		make_buffer_file=False
+# 	)
 
-#calculate total counts
-asql.calculate_total_counts(chunk_size=750,print_progress=True)
-asql.plot_total_counts()
+# asql = AnnSQL(db='../db/pbmc3k.asql')
+# pd.set_option('display.max_rows', None)
+# asql.show_settings()
 
-#calculate gene counts
-asql.calculate_gene_counts(chunk_size=750, print_progress=True)
-asql.plot_gene_counts()
 
-#filter by total umi counts
-asql.filter_by_cell_counts(min_cell_count=2000, max_cell_count=15000)
-asql.plot_total_counts()
+def run_test(chunk):
 
-#filter by gene counts
-asql.filter_by_gene_counts(min_gene_counts=100, max_gene_counts=10000)
-asql.plot_gene_counts()
+	# Df with 1k rows and 30k columns. 
+	# This is a very similar matrix to a cell x gene matrix 
+	# which typically will have >50k rows and >30k columns.
+	n_rows = 1000
+	n_columns = 30000
+	df = np.random.rand(n_rows, n_columns)
+	df = pd.DataFrame(df)
+	df.columns = [f"gene_{i}" for i in range(n_columns)]
+	df.index = [f"{i}" for i in range(n_rows)]
+	df.index.name = 'cell_id'
+	df = df.reset_index()
+	
+	#open the door
+	conn = duckdb.connect(database='test.db')
 
-#normalize the data
-asql.expression_normalize(total_counts_per_cell=10000, chunk_size=750, print_progress=True)
+	#does the table exist? If not, create it.
+	if "X" not in conn.sql("SHOW TABLES;").df()["name"].to_list():
+		conn.execute("CREATE OR REPLACE TABLE X ({})".format(', '.join([f"{col} FLOAT" for col in df.columns])))
 
-#log transform the data (Ln)
-asql.expression_log(chunk_size=750, print_progress=True, log_type="LN")
+	#display the memory occupied by df	(should be roughly 8 bytes x 30k genes x 1k cells = 240Mb)
+	print("\tTotal df memory: ",df.memory_usage(index=True).sum() / 1024**2,"Mb")
 
-#calculate the variable genes
-asql.calculate_variable_genes(chunk_size=750, print_progress=True, save_var_names=False)
+	#insert the data (will be iteratived to simulate chunks)
+	start_time = time.time()
+	conn.execute("INSERT INTO X SELECT * FROM df")
+	print(f"\tInsert time: {time.time() - start_time} seconds")
 
-#take a look at the highly variable
-asql.plot_highly_variable_genes(top_variable_genes=2000)
+	#total database size
+	print("\tTotal database size: ",os.path.getsize('test.db') / 1024**2,"Mb")
 
-#save the highly variable genes to X that seem correct from the plot above
-asql.save_highly_variable_genes(top_variable_genes=2000)
+	#close the door
+	conn.close()
 
-#determine principal components based on the top 2000 variable genes
-asql.calculate_pca(n_pcs=50, top_variable_genes=2000, chunk_size=750, print_progress=True, zero_center=False, max_cells_memory_threshold=1000)
 
-#show the variance explained
-asql.pca_variance_explained()
-
-#plot the PCA
-asql.plot_pca(PcX=1, PcY=2)
-
-#calculate UMAP
-asql.calculate_umap()
-
-#plot the UMAP
-asql.plot_umap()
-
-#calculate leiden clusters
-asql.calculate_leiden_clusters(resolution=1.0, n_neighbors=30)
-
-#plot the leiden clusters
-asql.plot_umap(color_by="leiden_clusters", legend_location="on data")
-
-#calculate marker genes
-asql.calculate_marker_genes(obs_key="leiden_clusters")
-
-#plot the marker genes of 1 vs all
-asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=0.5, group1="1", group2="ALL")
-
-#plot marker genes for each cluster
-asql.plot_marker_genes(obs_key="leiden_clusters", columns=3)
-
-#return a list of marker genes
-asql.get_marker_genes(obs_key="leiden_clusters", group="0")
-
-#take a look at a marker gene
-asql.plot_umap(color_by="gene_4601")
-
-#create cell type annotations
-cell_types = {"0": "Microglia","1":"Inhibitory","2":"OPCs","3":"Astrocytes","4":"Excitatory"}
-
-#add the cell types to the obs table
-asql.add_observations(obs_key="cell_type", obs_values=cell_types, match_on="leiden_clusters")
-
-#plot the cell types
-asql.plot_umap(color_by="cell_type")
-
-#explicit calculate differential expression between groups
-asql.calculate_differential_expression(obs_key="cell_type", group1_value="Excitatory", group2_value="Inhibitory", drop_table=False)
-
-#plot the differential expression between groups
-asql.plot_differential_expression(pvalue_threshold=0.05, logfc_threshold=0.5, group1="Excitatory", group2="Inhibitory")
+for i in range(1, 6):
+	print(f"Chunk: {i}")
+	mem_usage = memory_usage((run_test, (i,), {}))
+	print('\tMax memory usage: {:.2f} MB'.format(max(mem_usage)))

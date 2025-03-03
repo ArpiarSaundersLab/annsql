@@ -1,6 +1,7 @@
 data/
 db/
 env/
+env2/
 __pycache__/
 rdata/
 *.pyc

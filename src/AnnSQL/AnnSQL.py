@@ -16,7 +16,7 @@ from scipy.stats import t as tdist
 import umap
 
 class AnnSQL:
-	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], memory_limit=None):
+	def __init__(self, adata=None, db=None, create_all_indexes=False, create_basic_indexes=False, print_output=True, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], memory_limit=None, db_config={}):
 		"""
 		Initializes an instance of the AnnSQL class. This class is used to query and update a database created from an AnnData object. 
 		it also provides methods for preprocessing and basic analysis. The in-process database engine is DuckDB and the database is 
@@ -44,6 +44,7 @@ class AnnSQL:
 		self.is_open = False
 		self.print_output = print_output
 		self.memory_limit = memory_limit
+		self.db_config = db_config
 		if self.db is None:
 			self.build_db()
 		else:
@@ -96,7 +97,7 @@ class AnnSQL:
 		"""
 
 		if self.db is not None:
-			self.conn = duckdb.connect(self.db)
+			self.conn = duckdb.connect(self.db, config=self.db_config)
 			self.is_open = True
 
 	def close_db(self):
@@ -138,7 +139,7 @@ class AnnSQL:
 		Returns:
 			None
 		"""
-		self.conn = duckdb.connect(':memory:')
+		self.conn = duckdb.connect(':memory:', config=self.db_config)
 		db = BuildDb(adata=self.adata, conn=self.conn, create_all_indexes=self.create_all_indexes, create_basic_indexes=self.create_basic_indexes, layers=self.layers, print_output=self.print_output)
 		self.conn = db.conn
 
@@ -500,7 +501,8 @@ class AnnSQL:
 				self.update_query("ALTER TABLE var ADD COLUMN gene_counts FLOAT DEFAULT 0;", suppress_message=True)
 				self.update_query("ALTER TABLE var ADD COLUMN gene_mean FLOAT DEFAULT 0;", suppress_message=True)
 			else:
-				self.update_query("UPDATE var SET gene_counts = 0.0;", suppress_message=True)	
+				self.update_query("UPDATE var SET gene_counts = 0.0;", suppress_message=True)
+				self.update_query("UPDATE var SET gene_mean = 0.0;", suppress_message=True)
 
 		print("Gene Counts Calculation Started")
 		gene_counts = []
@@ -1030,7 +1032,6 @@ class AnnSQL:
 		self.query_raw(query)
 		self.query_raw(f"DROP TABLE IF EXISTS X;")
 		self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
-		#self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'"{gene}"' for gene in genes])});")
 		self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'\'{gene}\'' for gene in genes])});")
 		print(f"X table updated with only HV genes.")
 
