@@ -355,10 +355,10 @@ class AnnSQL:
 		"""
 
 		self.check_chunk_size(chunk_size)
-		# if 'total_counts' not in self.query("SELECT * FROM obs LIMIT 1").columns:
-		# 	print("Total counts not found...")
-		# 	self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
-		self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
+
+		#check if total_counts column exists
+		if 'total_counts' not in self.query(f"Describe obs")['column_name'].values:
+			self.calculate_total_counts(chunk_size=chunk_size,print_progress=print_progress)
 
 		print("Expression Normalization Started")
 		gene_names = self.query(f"Describe X")['column_name'][1:].values
@@ -376,6 +376,7 @@ class AnnSQL:
 			if print_progress == True:
 				print(f"Processed chunk {i // chunk_size + 1}")
 		print("Expression Normalization Complete")
+
 
 	def expression_log(self, log_type="LN", chunk_size=200, print_progress=False):
 		"""
@@ -497,7 +498,10 @@ class AnnSQL:
 			self.conn.execute(f"CREATE TABLE var AS SELECT * FROM gene_names_df")
 		else:
 			print("Updating Var Table")
-			if "gene_counts" not in var_table.columns:
+			if "gene_counts" not in var_table.columns or "gene_mean" not in var_table.columns:
+				#drop the columns if they exist
+				self.update_query("ALTER TABLE var DROP COLUMN IF EXISTS gene_counts;", suppress_message=True)
+				self.update_query("ALTER TABLE var DROP COLUMN IF EXISTS gene_mean;", suppress_message=True)
 				self.update_query("ALTER TABLE var ADD COLUMN gene_counts FLOAT DEFAULT 0;", suppress_message=True)
 				self.update_query("ALTER TABLE var ADD COLUMN gene_mean FLOAT DEFAULT 0;", suppress_message=True)
 			else:
@@ -536,6 +540,7 @@ class AnnSQL:
 		""")
 
 		self.conn.execute("DROP VIEW IF EXISTS gene_counts_df")
+		self.query("DROP TABLE IF EXISTS gene_counts_df CASCADE")
 		print("Gene Counts Calculation Complete")
 
 
@@ -605,7 +610,7 @@ class AnnSQL:
 		self.conn.execute("DROP VIEW IF EXISTS variance_df")
 
 		if save_var_names == True:
-			self.save_highly_variable_genes(top_variable_genes=save_top_variable_genes)
+			self.save_highly_variable_genes(top_variable_genes=save_top_variable_genes, gene_field=gene_field)
 
 		print("Variance Calculation Complete")
 
@@ -784,7 +789,8 @@ class AnnSQL:
 						print_progress=False, 
 						zero_center=False, 
 						top_variable_genes=2000,
-						max_cells_memory_threshold=5000):
+						max_cells_memory_threshold=5000,
+						gene_field="gene_names"):
 
 		"""
 		Calculates the Principal Component Analysis (PCA) for the data stored in the specified table. This method uses the top variable genes 
@@ -827,13 +833,14 @@ class AnnSQL:
 			self.calculate_variable_genes(chunk_size=chunk_size, print_progress=print_progress, 
 										save_var_names=True, save_top_variable_genes=top_variable_genes)
 		
-		print("PCA Calculation Started\n")
+		print("PCA Calculation Started (4 Steps)")
 
 		#get the top genes to use
-		genes_df = self.query("SELECT gene_names FROM var ORDER BY variance DESC")
-		genes = genes_df['gene_names'].tolist()[:top_variable_genes]
+		genes_df = self.query(f"SELECT {gene_field} FROM var ORDER BY variance DESC")
+		genes = genes_df[gene_field].tolist()[:top_variable_genes]
 		
 		#build query for wide standardized table with two options for zero-centering
+		print("Step 1: Building Wide Standardized Table")
 		col_exprs = []
 		for gene in genes:
 			if zero_center:
@@ -846,6 +853,8 @@ class AnnSQL:
 		#insert the wide standardized table
 		self.query_raw("DROP TABLE IF EXISTS X_standard_wide;")
 		self.query_raw(f"CREATE TABLE X_standard_wide AS SELECT cell_id, {cols_sql} FROM {table_name};")
+
+		print("Step 2: Calculating Covariance Matrix")
 
 		#if there's less than 10k cells in X_standard_wide use np.cov method. SQL method isn't as fast, but is more memory efficient.
 		if self.query("SELECT COUNT(*) as total FROM X_standard_wide")["total"][0] < max_cells_memory_threshold:
@@ -870,7 +879,26 @@ class AnnSQL:
 			
 			#pivot the wide table to long form
 			self.query_raw(f"DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id TEXT, gene TEXT, value DOUBLE);")
-			self.query_raw(f"INSERT INTO X_standard SELECT cell_id, gene, value	FROM X_standard_wide UNPIVOT (value FOR gene IN ({", ".join(genes)})) ORDER BY gene;")
+			
+			
+			#this can be done in chunks if the dataset is too large
+			if int(self.query("SELECT COUNT(*) as total FROM X").values) < 100000:
+				self.query_raw(f"INSERT INTO X_standard SELECT cell_id, gene, value	FROM X_standard_wide UNPIVOT (value FOR gene IN ({", ".join(genes)})) ORDER BY gene;")
+			else:
+				for i in range(0, len(genes), chunk_size):
+					chunk_genes = genes[i:i+chunk_size]
+					genes_clause = ", ".join(chunk_genes)
+					if print_progress == True:
+						print(f"Unpivoting Chunk {i} of {len(genes)}")
+					self.query_raw(f"""
+					INSERT INTO X_standard
+					SELECT cell_id, gene, value
+					FROM (
+						SELECT cell_id, {", ".join(chunk_genes)}
+						FROM X_standard_wide
+					) 
+					UNPIVOT (value FOR gene IN ({genes_clause}));
+					""")
 
 			#covariance matrix
 			self.query_raw("DROP TABLE IF EXISTS X_covariance; CREATE TABLE X_covariance (gene1 STRING, gene2 STRING, value DOUBLE);")
@@ -904,6 +932,8 @@ class AnnSQL:
 			#convert to np (small matrix, okay to represent as numpy)
 			cov_matrix_np = cov_matrix.to_numpy()
 
+		print("Step 3: Calculating Eigenvalues and Eigenvectors")
+
 		#use linalg.eigh for the eigenvalues and eigenvectors (cov matrix is small)
 		eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix_np)
 		sorted_idx = np.argsort(eigenvalues)[::-1]
@@ -935,6 +965,7 @@ class AnnSQL:
 		self.close_db()
 		
 
+		print("Step 4: Calculating PC Scores")
 
 		#if there's less than 10k cells in X_standard_wide use np.dot method. SQL method isn't as fast, but is more memory efficient.
 		if self.query("SELECT COUNT(*) as total FROM X_standard_wide")["total"][0] < max_cells_memory_threshold:
@@ -1004,7 +1035,7 @@ class AnnSQL:
 			
 
 
-	def save_highly_variable_genes(self, top_variable_genes=1000):
+	def save_highly_variable_genes(self, top_variable_genes=1000, gene_field="gene_names"):
 		"""
 		Save only the top highly variable genes from the 'var' table into table 'X'.
 		
@@ -1021,8 +1052,8 @@ class AnnSQL:
 		"""
 
 		
-		genes = self.query(f"SELECT gene_names FROM var ORDER BY variance DESC LIMIT {top_variable_genes}")
-		genes = genes['gene_names'].tolist()
+		genes = self.query(f"SELECT {gene_field} FROM var ORDER BY variance DESC LIMIT {top_variable_genes}")
+		genes = genes[gene_field].tolist()
 
 		query = f"""
 		CREATE TABLE X_buffer AS
@@ -1032,11 +1063,11 @@ class AnnSQL:
 		self.query_raw(query)
 		self.query_raw(f"DROP TABLE IF EXISTS X;")
 		self.query_raw(f"ALTER TABLE X_buffer RENAME TO X")
-		self.query_raw(f"DELETE FROM var WHERE gene_names NOT IN ({', '.join([f'\'{gene}\'' for gene in genes])});")
+		self.query_raw(f"DELETE FROM var WHERE {gene_field} NOT IN ({', '.join([f'\'{gene}\'' for gene in genes])});")
 		print(f"X table updated with only HV genes.")
 
 
-	def filter_by_gene_counts(self, min_gene_counts=None, max_gene_counts=None):
+	def filter_by_gene_counts(self, min_gene_counts=None, max_gene_counts=None, gene_field="gene_names"):
 		"""
 		Filter the data by gene counts. This method removes cells with gene counts below the minimum threshold and above the maximum threshold.
 
@@ -1055,8 +1086,8 @@ class AnnSQL:
 		"""
 
 		if min_gene_counts != None and max_gene_counts == None:
-			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts}")
-			genes = genes['gene_names'].tolist()
+			genes = self.query(f"SELECT {gene_field} FROM var WHERE gene_counts > {min_gene_counts}")
+			genes = genes[gene_field].tolist()
 			
 			query = f"""
 			CREATE TABLE X_buffer AS
@@ -1070,8 +1101,8 @@ class AnnSQL:
 			print(f"Removed genes with less than {min_gene_counts} from X table.")
 
 		elif min_gene_counts != None and max_gene_counts != None:
-			genes = self.query(f"SELECT gene_names FROM var WHERE gene_counts > {min_gene_counts} AND gene_counts < {max_gene_counts}")
-			genes = genes['gene_names'].tolist()
+			genes = self.query(f"SELECT {gene_field} FROM var WHERE gene_counts > {min_gene_counts} AND gene_counts < {max_gene_counts}")
+			genes = genes[gene_field].tolist()
 
 			#check X columns for total_counts. We need to keep this column for meow
 			if 'total_counts' in self.query("SELECT * FROM X LIMIT 1").columns:

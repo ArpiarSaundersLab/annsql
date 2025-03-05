@@ -40,6 +40,12 @@ from scipy.sparse import issparse
 # pd.set_option('display.max_rows', None)
 # asql.show_settings()
 
+import pandas as pd
+import numpy as np
+import time
+import duckdb
+import os
+from memory_profiler import memory_usage
 
 def run_test(chunk):
 
@@ -47,7 +53,7 @@ def run_test(chunk):
 	# This is a very similar matrix to a cell x gene matrix 
 	# which typically will have >50k rows and >30k columns.
 	n_rows = 1000
-	n_columns = 30000
+	n_columns = 100
 	df = np.random.rand(n_rows, n_columns)
 	df = pd.DataFrame(df)
 	df.columns = [f"gene_{i}" for i in range(n_columns)]
@@ -77,7 +83,9 @@ def run_test(chunk):
 	conn.close()
 
 
-for i in range(1, 6):
-	print(f"Chunk: {i}")
-	mem_usage = memory_usage((run_test, (i,), {}))
-	print('\tMax memory usage: {:.2f} MB'.format(max(mem_usage)))
+if __name__ == "__main__":
+	#run the test with 5 chunks
+	for i in range(1, 6):
+		print(f"Chunk: {i}")
+		mem_usage = memory_usage((run_test, (i,), {}))
+		print('\tMax memory usage: {:.2f} MB'.format(max(mem_usage)))

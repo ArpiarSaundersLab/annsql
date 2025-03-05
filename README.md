@@ -61,7 +61,7 @@ asql = AnnSQL(db="db/pbmc3k_reduced.asql")
 asql.query("SELECT * FROM adata LIMIT 5")
 ```
 
-## Advanced Queries and usage
+## Advanced Queries and Usage
 ```python
 from AnnSQL import AnnSQL
 import scanpy as sc
