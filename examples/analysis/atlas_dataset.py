@@ -7,7 +7,7 @@ from AnnSQL.MakeDb import MakeDb
 import pandas as pd
 
 ####################################################################################################
-# AnnData/Scanpy runtime & memory analysis
+# AnnData/Scanpy runtime and memory of all major procedures
 ####################################################################################################
 #load the atlas dataset (4.4 million cells) in either memory or backed mode
 #adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r+")
@@ -33,42 +33,10 @@ import pandas as pd
 # sc.pp.log1p(adata_mem)
 # print("--- %s seconds log1p---" % (time.time() - start_time))
 
+# #Result: all procedures except filtering failed on laptop and HPC
 ####################################################################################################
-
+# Run the AnnSQL runtime and memory of all major procedures
 ####################################################################################################
-
-# #build a database to query later
-# MakeDb(adata=adata, 
-# 		db_name="Macosko_Mouse_Atlas_Proceesed", 
-# 		db_path="../db/", 
-# 		create_basic_indexes=True,
-# 		layers=["X", "obs","var"])
-
-#open the database
-asql = AnnSQL(db="../db/Macosko_Mouse_Atlas_Processed.asql")
-asql.show_tables()
-asql.query("SELECT * FROM X_standard_wide LIMIT 1")
-
-
-# Get top 2000 genes
-genes_df = asql.query("SELECT gene_names_orig FROM var ORDER BY variance DESC")
-genes = genes_df["gene_names_orig"].tolist()[:2000]
-
-chunk_size = 200  
-covariance_matrix = pd.DataFrame(index=genes, columns=genes, dtype=float)
-
-for i, gene_1 in enumerate(genes[:2]): 
-    start_time = time.time()
-    gene_2_list = genes[i:]  #upper triangle
-    for j in range(0, len(gene_2_list), chunk_size):
-        gene_2_chunk = gene_2_list[j:j + chunk_size] 
-        genes_clause = ", ".join([f"covar_samp({gene_1}, {gene_2}) AS cov_{gene_1}_{gene_2}" for gene_2 in gene_2_chunk])
-        result = asql.query(f"SELECT {genes_clause} FROM X_standard_wide")
-        for k, gene_2 in enumerate(gene_2_chunk):
-            covariance_matrix.at[gene_1, gene_2] = result.iloc[0, k]
-
-    print("--- %s seconds covariance ---" % (time.time() - start_time))
-
 
 def test_filter():
 	#simple filter
@@ -100,7 +68,7 @@ def save_highly_variable_genes_memory_wrapper():
 
 def calculate_pca_memory_wrapper():
 	#pca
-	asql.calculate_pca(n_pcs=50, top_variable_genes=2000, chunk_size=20, zero_center=False, print_progress=True, gene_field="gene_names_orig")
+	asql.calculate_pca(n_pcs=50, top_variable_genes=2000, chunk_size=200, zero_center=False, print_progress=True, gene_field="gene_names_orig")
 
 def calculate_umap_memory_wrapper():
 	#umap
@@ -111,8 +79,15 @@ def calculate_leiden_clusters_memory_wrapper():
 	asql.calculate_leiden_clusters(resolution=1, n_neighbors=5)
 
 def calculate_differential_expression_memory_wrapper():
-	#de of cluster 0 vs cluster 1
-	asql.calculate_differential_expression(obs_key="leiden_clusters", group1_value="0", group2_value="1")
+	#de of two groups
+	asql.calculate_differential_expression(obs_key="ClusterNm", group1_value="Ex_Rorb_Endou_2", group2_value="Ex_Rorb_Col8a1", gene_field="gene_names_orig", drop_table=True)
+
+
+#open the database
+asql = AnnSQL(db="../db/Macosko_Mouse_Atlas_Processed.asql")
+# asql.query("SELECT ClusterNm,COUNT(ClusterNm) as total FROM obs GROUP BY ClusterNm")
+# asql.show_tables()
+# asql.query('SELECT * FROM diff_expression')
 
 
 #create a df to store the results
@@ -170,7 +145,6 @@ def calculate_differential_expression_memory_wrapper():
 # df.to_csv("../results/atlas_runtime_memory.csv", index=False)
 
 # #run calculate_variable_genes
-# #NOTE fast, but log failed. Around 4 minutes
 # start_time = time.time()
 # result = memory_usage(calculate_variable_genes_memory_wrapper)
 # runtime = time.time() - start_time
@@ -188,7 +162,6 @@ def calculate_differential_expression_memory_wrapper():
 # df = pd.read_csv("../results/atlas_runtime_memory.csv")
 # df = pd.concat([df, pd.DataFrame([["save_highly_variable_genes", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
 
-
 #TODO Start here
 #run calculate_pca
 start_time = time.time()
@@ -199,33 +172,33 @@ print("calculate_pca_memory_wrapper", max_memory, runtime)
 df = pd.read_csv("../results/atlas_runtime_memory.csv")
 df = pd.concat([df, pd.DataFrame([["calculate_pca", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
 
-#run calculate_umap
-start_time = time.time()
-result = memory_usage(calculate_umap_memory_wrapper)
-runtime = time.time() - start_time
-max_memory = max(result) - min(result)
-print("calculate_umap_memory_wrapper", max_memory, runtime)
-df = pd.read_csv("../results/atlas_runtime_memory.csv")
-df = pd.concat([df, pd.DataFrame([["calculate_umap", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
-df.to_csv("../results/atlas_runtime_memory.csv", index=False)
+# #run calculate_umap
+# start_time = time.time()
+# result = memory_usage(calculate_umap_memory_wrapper)
+# runtime = time.time() - start_time
+# max_memory = max(result) - min(result)
+# print("calculate_umap_memory_wrapper", max_memory, runtime)
+# df = pd.read_csv("../results/atlas_runtime_memory.csv")
+# df = pd.concat([df, pd.DataFrame([["calculate_umap", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+# df.to_csv("../results/atlas_runtime_memory.csv", index=False)
 
-#run calculate_leiden_clusters
-start_time = time.time()
-result = memory_usage(calculate_leiden_clusters_memory_wrapper)
-runtime = time.time() - start_time
-max_memory = max(result) - min(result)
-print("calculate_leiden_clusters_memory_wrapper", max_memory, runtime)
-df = pd.read_csv("../results/atlas_runtime_memory.csv")
-df = pd.concat([df, pd.DataFrame([["calculate_leiden_clusters", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
-df.to_csv("../results/atlas_runtime_memory.csv", index=False)
+# #run calculate_leiden_clusters
+# start_time = time.time()
+# result = memory_usage(calculate_leiden_clusters_memory_wrapper)
+# runtime = time.time() - start_time
+# max_memory = max(result) - min(result)
+# print("calculate_leiden_clusters_memory_wrapper", max_memory, runtime)
+# df = pd.read_csv("../results/atlas_runtime_memory.csv")
+# df = pd.concat([df, pd.DataFrame([["calculate_leiden_clusters", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+# df.to_csv("../results/atlas_runtime_memory.csv", index=False)
 
-#run calculate_differential_expression
-start_time = time.time()
-result = memory_usage(calculate_differential_expression_memory_wrapper)
-runtime = time.time() - start_time
-max_memory = max(result) - min(result)
-print("calculate_differential_expression_memory_wrapper", max_memory, runtime)
-df = pd.read_csv("../results/atlas_runtime_memory.csv")
-df = pd.concat([df, pd.DataFrame([["calculate_differential_expression", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
-df.to_csv("../results/atlas_runtime_memory.csv", index=False)
+# #run calculate_differential_expression
+# start_time = time.time()
+# result = memory_usage(calculate_differential_expression_memory_wrapper)
+# runtime = time.time() - start_time
+# max_memory = max(result) - min(result)
+# print("calculate_differential_expression_memory_wrapper", max_memory, runtime)
+# df = pd.read_csv("../results/atlas_runtime_memory.csv")
+# df = pd.concat([df, pd.DataFrame([["calculate_differential_expression", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+# df.to_csv("../results/atlas_runtime_memory.csv", index=False)
 

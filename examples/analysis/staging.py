@@ -53,7 +53,7 @@ def run_test(chunk):
 	# This is a very similar matrix to a cell x gene matrix 
 	# which typically will have >50k rows and >30k columns.
 	n_rows = 1000
-	n_columns = 100
+	n_columns = 30000
 	df = np.random.rand(n_rows, n_columns)
 	df = pd.DataFrame(df)
 	df.columns = [f"gene_{i}" for i in range(n_columns)]
@@ -62,7 +62,7 @@ def run_test(chunk):
 	df = df.reset_index()
 	
 	#open the door
-	conn = duckdb.connect(database='test.db')
+	conn = duckdb.connect(database='test.db', config={'memory_limit':'3GB'})
 
 	#does the table exist? If not, create it.
 	if "X" not in conn.sql("SHOW TABLES;").df()["name"].to_list():

@@ -877,60 +877,85 @@ class AnnSQL:
 
 			print("Using SQL method for covariance calculation")
 			
-			#pivot the wide table to long form
-			self.query_raw(f"DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id TEXT, gene TEXT, value DOUBLE);")
+			# #pivot the wide table to long form
+			# self.query_raw(f"DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id TEXT, gene TEXT, value DOUBLE);")
 			
+			# #this can be done in chunks if the dataset is too large
+			# if int(self.query("SELECT COUNT(*) as total FROM X").values) < 100000:
+			# 	self.query_raw(f"INSERT INTO X_standard SELECT cell_id, gene, value	FROM X_standard_wide UNPIVOT (value FOR gene IN ({", ".join(genes)})) ORDER BY gene;")
+			# else:
+			# 	for i in range(0, len(genes), chunk_size):
+			# 		chunk_genes = genes[i:i+chunk_size]
+			# 		genes_clause = ", ".join(chunk_genes)
+			# 		if print_progress == True:
+			# 			print(f"Unpivoting Chunk {i} of {len(genes)}")
+			# 		self.query_raw(f"""
+			# 		INSERT INTO X_standard
+			# 		SELECT cell_id, gene, value
+			# 		FROM (
+			# 			SELECT cell_id, {", ".join(chunk_genes)}
+			# 			FROM X_standard_wide
+			# 		) 
+			# 		UNPIVOT (value FOR gene IN ({genes_clause}));
+			# 		""")
+
+			# #covariance matrix
+			# self.query_raw("DROP TABLE IF EXISTS X_covariance; CREATE TABLE X_covariance (gene1 STRING, gene2 STRING, value DOUBLE);")
+
+			# #insert the covariance values
+			# for i in range(0, len(genes), chunk_size):
+			# 	chunk_genes = genes[i:i+chunk_size]
+			# 	genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
+			# 	print(f"Covariance Chunk {i} of {len(genes)}")
+			# 	self.query_raw(f"""
+			# 	INSERT INTO X_covariance
+			# 	SELECT 
+			# 		x.gene AS gene_1,
+			# 		y.gene AS gene_2,
+			# 		covar_samp(x.value, y.value) AS covariance
+			# 	FROM X_standard x
+			# 	JOIN X_standard y 
+			# 		ON x.cell_id = y.cell_id
+			# 	WHERE x.gene <= y.gene AND x.gene IN ({genes_clause})
+			# 	GROUP BY x.gene, y.gene;
+			# 	""")
 			
-			#this can be done in chunks if the dataset is too large
-			if int(self.query("SELECT COUNT(*) as total FROM X").values) < 100000:
-				self.query_raw(f"INSERT INTO X_standard SELECT cell_id, gene, value	FROM X_standard_wide UNPIVOT (value FOR gene IN ({", ".join(genes)})) ORDER BY gene;")
-			else:
-				for i in range(0, len(genes), chunk_size):
-					chunk_genes = genes[i:i+chunk_size]
-					genes_clause = ", ".join(chunk_genes)
-					if print_progress == True:
-						print(f"Unpivoting Chunk {i} of {len(genes)}")
-					self.query_raw(f"""
-					INSERT INTO X_standard
-					SELECT cell_id, gene, value
-					FROM (
-						SELECT cell_id, {", ".join(chunk_genes)}
-						FROM X_standard_wide
-					) 
-					UNPIVOT (value FOR gene IN ({genes_clause}));
-					""")
+			# #take a look at the covariance (small, select all should be okay)
+			# cov_df = self.query("SELECT * FROM X_covariance ORDER BY gene1, gene2")
+			# cov_df = cov_df.sort_values(by=['gene1', 'gene2'])
 
-			#covariance matrix
-			self.query_raw("DROP TABLE IF EXISTS X_covariance; CREATE TABLE X_covariance (gene1 STRING, gene2 STRING, value DOUBLE);")
+			# #pivots and create square covar matrix. (small matrix, okay as df)
+			# cov_matrix = cov_df.pivot(index="gene1", columns="gene2", values="value").fillna(0)
+			# cov_matrix = cov_matrix.reindex(index=genes, columns=genes).fillna(0)
 
-			#insert the covariance values
-			for i in range(0, len(genes), chunk_size):
-				chunk_genes = genes[i:i+chunk_size]
-				genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
-				print(f"Covariance Chunk {i} of {len(genes)}")
-				self.query_raw(f"""
-				INSERT INTO X_covariance
-				SELECT 
-					x.gene AS gene_1,
-					y.gene AS gene_2,
-					covar_samp(x.value, y.value) AS covariance
-				FROM X_standard x
-				JOIN X_standard y 
-					ON x.cell_id = y.cell_id
-				WHERE x.gene <= y.gene AND x.gene IN ({genes_clause})
-				GROUP BY x.gene, y.gene;
-				""")
-			
-			#take a look at the covariance (small, select all should be okay)
-			cov_df = self.query("SELECT * FROM X_covariance ORDER BY gene1, gene2")
-			cov_df = cov_df.sort_values(by=['gene1', 'gene2'])
+			# #convert to np (small matrix, okay to represent as numpy)
+			# cov_matrix_np = cov_matrix.to_numpy()
 
-			#pivots and create square covar matrix. (small matrix, okay as df)
-			cov_matrix = cov_df.pivot(index="gene1", columns="gene2", values="value").fillna(0)
-			cov_matrix = cov_matrix.reindex(index=genes, columns=genes).fillna(0)
 
+			covariance_matrix_df = pd.DataFrame(index=genes, columns=genes, dtype=float)
+
+			for i, gene_1 in enumerate(genes): 
+				start_time = time.time()
+				gene_2_list = genes[i:]  #upper triangle
+				for j in range(0, len(gene_2_list), chunk_size):
+					gene_2_chunk = gene_2_list[j:j + chunk_size] 
+					genes_clause = ", ".join([f"covar_samp({gene_1}, {gene_2}) AS cov_{gene_1}_{gene_2}" for gene_2 in gene_2_chunk])
+					result = self.query(f"SELECT {genes_clause} FROM X_standard_wide")
+					for k, gene_2 in enumerate(gene_2_chunk):
+						covariance_matrix_df.at[gene_1, gene_2] = result.iloc[0, k]
+				print("--- %s seconds covariance ---" % (time.time() - start_time))
+
+			covariance_matrix_df = covariance_matrix_df.fillna(0)			
 			#convert to np (small matrix, okay to represent as numpy)
-			cov_matrix_np = cov_matrix.to_numpy()
+			cov_matrix_np = covariance_matrix_df.to_numpy()
+			covariance_matrix_df.to_csv("covariance_matrix_df.csv")
+			
+			self.query_raw("DROP TABLE IF EXISTS X_covariance;")
+			self.open_db()
+			self.conn.register("covariance_matrix_df", covariance_matrix_df)
+			self.conn.execute("CREATE TABLE X_covariance AS SELECT * FROM covariance_matrix_df")
+			self.close_db()
+
 
 		print("Step 3: Calculating Eigenvalues and Eigenvectors")
 
@@ -1577,7 +1602,7 @@ class AnnSQL:
 		self.conn.unregister("temp_adj")
 		
 
-	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, name="None", drop_table=False, marker_genes=False):
+	def calculate_differential_expression(self, obs_key=None, group1_value=None, group2_value=None, name="None", drop_table=False, marker_genes=False, gene_field="gene_names"):
 		"""
 		Calculates differential expression between two groups of cells based on the 'X' table and the 'obs' table. This is performed using a t-test.
 
@@ -1610,7 +1635,7 @@ class AnnSQL:
 		elif marker_genes == True and (obs_key is None or group1_value is None):
 			raise ValueError("obs_key must be provided for marker_genes=True.")
 
-		genes = self.query("SELECT gene_names FROM var;")["gene_names"].values.tolist()
+		genes = self.query(f"SELECT {gene_field} FROM var;")[gene_field].values.tolist()
 
 		if drop_table == True:
 			self.query_raw("DROP TABLE IF EXISTS diff_expression;")
@@ -1631,8 +1656,10 @@ class AnnSQL:
 			in_condition = f"IN ('{group1_value}', '{group2_value}')"
 			group_by_condition = f"GROUP BY obs.{obs_key}"
 			select_condition = f"obs.{obs_key} AS group_label,"
-
+		i=1
 		for gene in genes:
+			print(f"Complete gene {i} of {len(genes)}")
+			i=i+1
 			query = f"""
 			WITH stats AS (
 				SELECT 
