@@ -1,0 +1,60 @@
+site_name: AnnSQL Docs
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - Tutorials:
+    - Basic Usage: basic_usage.ipynb
+    - On-Disk: build_ondisk_database.ipynb
+    - In-Memory: build_in_memory_database.ipynb
+    - Preprocessing: preprocessing.ipynb
+    - Differential Expression: de.ipynb
+    - Meta Cells: build_meta_cells.ipynb
+    - R usage: R_usage.md
+  # - Usage:
+  #   - Backup UMI Counts: ""
+  #   - Build Meta Cells: ""
+  #   - Differential Expression: ""
+  #   - Export to AnnData: ""
+  #   - Filter by Cells: ""
+  #   - Filter by Genes: ""
+  #   - Highly Variable Genes: ""
+  #   - Leiden Clustering: ""
+  #   - Marker Genes: ""
+  #   - Normalize Counts: ""
+  #   - PCA: ""
+  #   - Query: ""
+  #   - Query Delete: ""
+  #   - Query Raw: ""
+  #   - Total Counts: ""
+  #   - Total Gene Counts: ""
+  #   - Transform Expression: ""
+  #   - UMAP: ""
+  # - Plotting:
+  #   - Gene Counts: ""
+  #   - UMI Counts: ""
+  #   - Principle Components: ""
+  #   - PCA Variance: ""
+  #   - Highly Variable Genes: ""
+  #   - UMAP: ""
+  #   - Marker Genes: ""
+  - Interoperability: interoperability.md
+  - API:
+    - AnnSQL: api_annsql.md
+    - MakeDb: api_makedb.md
+    - BuildDb: api_builddb.md
+  - Reference: cite.md
+  - Github: "https://github.com/ArpiarSaundersLab/annsql"
+plugins:
+    - mkdocs-jupyter:
+          theme: dark
+          ignore_h1_titles: True
+    - mkdocstrings:
+        handlers:
+          python:
+            setup_commands:
+              - import sys
+              - sys.path.append("src")
+theme:
+    name: material
+    palette:
+        scheme: slate

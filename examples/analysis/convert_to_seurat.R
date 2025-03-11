@@ -2,6 +2,8 @@ library(Seurat)
 library(SeuratDisk)
 library(anndata)
 
+#Note: Open rstudio with sceasy conda environment
+
 # Define the file increments
 n_cells <- c("1000", "5000", "10000", "15000", "20000", "25000", "30000", "35000", "40000", "45000", "50000", "75000", "100000", "250000")
 
