@@ -171,6 +171,7 @@ max_memory = max(result) - min(result)
 print("calculate_pca_memory_wrapper", max_memory, runtime)
 df = pd.read_csv("../results/atlas_runtime_memory.csv")
 df = pd.concat([df, pd.DataFrame([["calculate_pca", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+df.to_csv("../results/atlas_runtime_memory.csv", index=False)
 
 # #run calculate_umap
 # start_time = time.time()

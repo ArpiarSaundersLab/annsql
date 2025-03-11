@@ -789,7 +789,7 @@ class AnnSQL:
 						print_progress=False, 
 						zero_center=False, 
 						top_variable_genes=2000,
-						max_cells_memory_threshold=5000,
+						max_cells_memory_threshold=10000,
 						gene_field="gene_names"):
 
 		"""
@@ -856,9 +856,9 @@ class AnnSQL:
 
 		print("Step 2: Calculating Covariance Matrix")
 
-		#if there's less than 10k cells in X_standard_wide use np.cov method. SQL method isn't as fast, but is more memory efficient.
+		#if there's less than n cells in X_standard_wide use np.cov method. 
+		#the SQL method isn't as fast, but is more memory efficient.
 		if self.query("SELECT COUNT(*) as total FROM X_standard_wide")["total"][0] < max_cells_memory_threshold:
-			print("Using numpy method for covariance calculation")	
 		
 			#get the gene data
 			wide_df = self.query("SELECT * FROM X_standard_wide ORDER BY cell_id")
@@ -874,66 +874,10 @@ class AnnSQL:
 
 
 		else:
-
-			print("Using SQL method for covariance calculation")
 			
-			# #pivot the wide table to long form
-			# self.query_raw(f"DROP TABLE IF EXISTS X_standard; CREATE TABLE X_standard (cell_id TEXT, gene TEXT, value DOUBLE);")
-			
-			# #this can be done in chunks if the dataset is too large
-			# if int(self.query("SELECT COUNT(*) as total FROM X").values) < 100000:
-			# 	self.query_raw(f"INSERT INTO X_standard SELECT cell_id, gene, value	FROM X_standard_wide UNPIVOT (value FOR gene IN ({", ".join(genes)})) ORDER BY gene;")
-			# else:
-			# 	for i in range(0, len(genes), chunk_size):
-			# 		chunk_genes = genes[i:i+chunk_size]
-			# 		genes_clause = ", ".join(chunk_genes)
-			# 		if print_progress == True:
-			# 			print(f"Unpivoting Chunk {i} of {len(genes)}")
-			# 		self.query_raw(f"""
-			# 		INSERT INTO X_standard
-			# 		SELECT cell_id, gene, value
-			# 		FROM (
-			# 			SELECT cell_id, {", ".join(chunk_genes)}
-			# 			FROM X_standard_wide
-			# 		) 
-			# 		UNPIVOT (value FOR gene IN ({genes_clause}));
-			# 		""")
-
-			# #covariance matrix
-			# self.query_raw("DROP TABLE IF EXISTS X_covariance; CREATE TABLE X_covariance (gene1 STRING, gene2 STRING, value DOUBLE);")
-
-			# #insert the covariance values
-			# for i in range(0, len(genes), chunk_size):
-			# 	chunk_genes = genes[i:i+chunk_size]
-			# 	genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
-			# 	print(f"Covariance Chunk {i} of {len(genes)}")
-			# 	self.query_raw(f"""
-			# 	INSERT INTO X_covariance
-			# 	SELECT 
-			# 		x.gene AS gene_1,
-			# 		y.gene AS gene_2,
-			# 		covar_samp(x.value, y.value) AS covariance
-			# 	FROM X_standard x
-			# 	JOIN X_standard y 
-			# 		ON x.cell_id = y.cell_id
-			# 	WHERE x.gene <= y.gene AND x.gene IN ({genes_clause})
-			# 	GROUP BY x.gene, y.gene;
-			# 	""")
-			
-			# #take a look at the covariance (small, select all should be okay)
-			# cov_df = self.query("SELECT * FROM X_covariance ORDER BY gene1, gene2")
-			# cov_df = cov_df.sort_values(by=['gene1', 'gene2'])
-
-			# #pivots and create square covar matrix. (small matrix, okay as df)
-			# cov_matrix = cov_df.pivot(index="gene1", columns="gene2", values="value").fillna(0)
-			# cov_matrix = cov_matrix.reindex(index=genes, columns=genes).fillna(0)
-
-			# #convert to np (small matrix, okay to represent as numpy)
-			# cov_matrix_np = cov_matrix.to_numpy()
-
-
 			covariance_matrix_df = pd.DataFrame(index=genes, columns=genes, dtype=float)
 
+			inc=1
 			for i, gene_1 in enumerate(genes): 
 				start_time = time.time()
 				gene_2_list = genes[i:]  #upper triangle
@@ -943,12 +887,15 @@ class AnnSQL:
 					result = self.query(f"SELECT {genes_clause} FROM X_standard_wide")
 					for k, gene_2 in enumerate(gene_2_chunk):
 						covariance_matrix_df.at[gene_1, gene_2] = result.iloc[0, k]
-				print("--- %s seconds covariance ---" % (time.time() - start_time))
+				if print_progress == True:
+					end_time = time.time() - start_time
+					print(f"Covariance: {inc} genes out of {len(genes)}: {str(end_time)} seconds")
+				inc += 1
 
-			covariance_matrix_df = covariance_matrix_df.fillna(0)			
+			covariance_matrix_df = covariance_matrix_df.fillna(0)	
+
 			#convert to np (small matrix, okay to represent as numpy)
 			cov_matrix_np = covariance_matrix_df.to_numpy()
-			covariance_matrix_df.to_csv("covariance_matrix_df.csv")
 			
 			self.query_raw("DROP TABLE IF EXISTS X_covariance;")
 			self.open_db()
@@ -1012,50 +959,59 @@ class AnnSQL:
 
 			pc_scores_df = pd.DataFrame(pc_scores_list)
 
+			#convert to matrix
+			pc_scores_df = pc_scores_df.pivot(index="cell_id", columns="pc", values="pc_score").fillna(0)
+			pc_scores_df.reset_index(inplace=True)
+
+			
 			#insert PC scores
 			self.query_raw("DROP TABLE IF EXISTS PC_scores;")
 			self.open_db()
+			self.conn.register("pc_scores_df", pc_scores_df)
 			self.conn.execute("CREATE TABLE PC_scores AS SELECT * FROM pc_scores_df;")
 			self.close_db()
 
 			
 		else:
 
-			#temp buffer table to reduce memory usage
-			self.query_raw("DROP TABLE IF EXISTS PC_scores_temp;")
-			self.query_raw("CREATE TABLE PC_scores_temp (cell_id STRING, pc INT, partial_score DOUBLE);")
-
-			#process genes in chunks
-			for i in range(0, len(genes), chunk_size):
-				chunk_genes = genes[i:i+chunk_size]
-				genes_clause = ", ".join([f"'{gene}'" for gene in chunk_genes])
-				dot_product_chunk_query = f"""
-				SELECT 
-					X.cell_id,
-					P.pc,
-					SUM(X.value * P.loading) AS partial_score
-				FROM X_standard X
-				JOIN PC_loadings P ON X.gene = P.gene
-				WHERE X.gene IN ({genes_clause})
-				GROUP BY X.cell_id, P.pc
-				ORDER BY X.cell_id, P.pc;
-				"""
-				#add partial results into the temp
-				self.query_raw(f"INSERT INTO PC_scores_temp {dot_product_chunk_query}")
-				print(f"PCs Chunk {i} of {len(genes)}")
-
-			#pull it all together
-			self.query_raw("DROP TABLE IF EXISTS PC_scores;")
-			self.query_raw("""
-				CREATE TABLE PC_scores AS
-					SELECT cell_id, pc, SUM(partial_score) AS pc_score FROM PC_scores_temp
-				GROUP BY cell_id, pc
-				ORDER BY cell_id, pc;
-				""")
-
 			#drop temp table
-			self.query_raw("DROP TABLE PC_scores_temp;")
+			self.query_raw("DROP TABLE IF EXISTS PC_scores_temp;")
 		
+			num_rows = self.query(f"SELECT {genes[0]} FROM X_standard_wide").shape[0]
+			matrix = np.zeros((num_rows, n_pcs))
+
+			#load the pcs into a dictionary so we can do O(1) lookups
+			pc_loadings = {}
+			for gene in genes:
+				pc_loadings[gene] = pc_loadings_df[pc_loadings_df['gene'] == gene]["loading"].to_numpy()
+
+			#iterate each gene and multiply the gene expression by the pc loading
+			inc=1
+			for gene in genes[:]:
+				start_time = time.time()
+				#gene_stand = self.query(f"SELECT {gene} FROM X_standard_wide").to_numpy()
+				gene_stand = self.query(f"SELECT {gene} FROM X_standard_wide ORDER BY cell_id").to_numpy()
+
+				gene_stand = gene_stand.reshape(-1) 
+				matrix += gene_stand[:, None] * pc_loadings[gene] 
+				if print_progress == True:
+					print(f"PCs Processed: {inc} of {len(genes)} genes: {str(time.time() - start_time)} seconds")
+				inc += 1
+
+			#cell_ids = self.query(f"SELECT cell_id FROM obs")
+			cell_ids = self.query(f"SELECT cell_id FROM X_standard_wide ORDER BY cell_id")["cell_id"].tolist()
+
+			pc_loadings_temp_df = pd.DataFrame(matrix)
+			pc_loadings_temp_df.insert(0, "cell_id", cell_ids)
+
+			#save to PC_scores table
+			self.query("DROP TABLE IF EXISTS PC_scores")
+			self.open_db()
+			self.conn.register("PC_scores_temp", pc_loadings_temp_df)
+			self.conn.execute("CREATE TABLE PC_scores AS SELECT * FROM PC_scores_temp")
+			self.close_db()
+
+
 		print("\nPCA Calculation Complete\n")
 			
 
@@ -1145,9 +1101,12 @@ class AnnSQL:
 			print(f"Removed genes with less than {min_gene_counts} and greater than {max_gene_counts} from X table.")
 
 		
-	def return_pca_scores_matrix(self):		
+	def return_pca_scores_matrix(self, legacy=False):		
 		"""
 		Returns the PCA scores matrix in the form of a matrix with cell IDs as index, PCs as columns, and PC scores as values.
+
+		Parameters:
+			legacy (bool, optional): Whether to return the legacy PCA scores matrix. For version<1 compatibility. Defaults to False.
 
 		Raises:
 			ValueError: If the 'PC_scores' table is not found. Run calculate_pca() first.
@@ -1158,8 +1117,11 @@ class AnnSQL:
 
 		if 'PC_scores' not in self.show_tables()['table_name'].tolist():
 			raise ValueError('PC_scores table not found. Run calculate_pca() first')
-
-		return self.query("SELECT * FROM PC_scores").pivot(index="cell_id", columns="pc", values="pc_score").fillna(0)
+		
+		if legacy == True:
+			return self.query("SELECT * FROM PC_scores").pivot(index="cell_id", columns="pc", values="pc_score").fillna(0)
+		else:
+			return self.query("SELECT * FROM PC_scores")
 
 	def save_raw(self, table_name="X_raw"):
 		"""
@@ -1383,7 +1345,11 @@ class AnnSQL:
 			asql.calculate_umap(n_neighbors=15, min_dist=0.5, n_components=2, metric='euclidean')
 		"""
 
-		pca_scores = self.return_pca_scores_matrix().values
+		pca_scores = self.return_pca_scores_matrix().drop(columns=['cell_id']).values
+
+		#drop column cell_id
+		#pca_scores = pca_scores.drop(columns=['cell_id'])
+
 		reducer = umap.UMAP(n_neighbors=n_neighbors,
 							min_dist=min_dist,
 							n_components=n_components,
@@ -1399,7 +1365,7 @@ class AnnSQL:
 		print("UMAP embedding calculated.")
 
 
-	def plot_umap(self, color_by=None, palette='viridis', title=None, legend_location=None, annotate=False):
+	def plot_umap(self, color_by=None, palette='viridis', title=None, legend_location=None, annotate=False, counts_table="X"):
 		"""
 		Plots the UMAP projection of the data from the 'umap_embeddings' table.
 
@@ -1430,10 +1396,13 @@ class AnnSQL:
 		umap_embedding = self.query("SELECT * FROM umap_embeddings")
 		
 		obs_values = None
-		if color_by in self.query("SELECT * FROM obs LIMIT 1").columns:
-			obs_values = self.query(f"SELECT {color_by} FROM obs ORDER BY cell_id")
-		elif color_by in self.query("SELECT gene_names FROM var")["gene_names"].values:
-			obs_values = self.query(f"SELECT {color_by} FROM X ORDER BY cell_id")
+		if counts_table == "X":
+			if color_by in self.query("SELECT * FROM obs LIMIT 1").columns:
+				obs_values = self.query(f"SELECT {color_by} FROM obs ORDER BY cell_id")
+			elif color_by in self.query("SELECT gene_names FROM var")["gene_names"].values:
+				obs_values = self.query(f"SELECT {color_by} FROM X ORDER BY cell_id")
+		else:
+			obs_values = self.query(f"SELECT {color_by} FROM {counts_table} WHERE cell_id IN (SELECT cell_id FROM obs) ORDER BY cell_id")
 		
 		df = umap_embedding.copy()
 		if obs_values is not None:
@@ -1492,15 +1461,13 @@ class AnnSQL:
 		
 		from sklearn.neighbors import kneighbors_graph
 		from sknetwork.clustering import Leiden
-
-		pca_df = self.return_pca_scores_matrix()
-		pca_scores = pca_df.values
-		cell_ids = pca_df.index
+		
+		pca_scores = self.return_pca_scores_matrix().drop(columns=['cell_id']).values
+		cell_ids = self.return_pca_scores_matrix()["cell_id"].tolist()
 
 		knn_graph = kneighbors_graph(pca_scores, n_neighbors=30, mode="connectivity", include_self=False)
-		leiden = Leiden(resolution=1.0, random_state=42)
+		leiden = Leiden(resolution=resolution, random_state=42)
 		labels = leiden.fit_predict(knn_graph)
-		labels
 
 		leiden_clusters = pd.DataFrame({
 			"cell_id": cell_ids,

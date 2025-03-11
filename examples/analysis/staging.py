@@ -17,36 +17,7 @@ import warnings
 warnings.filterwarnings('ignore')
 from scipy.sparse import issparse
 
-
 #TODO debug duckdb memory leak on daabases with >30k genes. 
-#Current fix is to make buffer file. Trading speed for memory until next duckdb release.abs
-
-
-# adata = sc.datasets.pbmc3k_processed()
-# db_config={
-# 	"memory_limit": "4GB",
-# 	"pandas_analyze_sample": 0,
-# }
-
-# MakeDb(adata=adata, db_path='../db', db_name='pbmc3k', 
-# 		print_output=True, 
-# 		db_config=db_config, 
-# 		chunk_size=1000, 
-# 		delete_existing_db=True,
-# 		make_buffer_file=False
-# 	)
-
-# asql = AnnSQL(db='../db/pbmc3k.asql')
-# pd.set_option('display.max_rows', None)
-# asql.show_settings()
-
-import pandas as pd
-import numpy as np
-import time
-import duckdb
-import os
-from memory_profiler import memory_usage
-
 def run_test(chunk):
 
 	# Df with 1k rows and 30k columns. 
