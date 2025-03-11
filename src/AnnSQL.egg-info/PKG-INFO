@@ -1,6 +1,6 @@
 Metadata-Version: 2.2
 Name: AnnSQL
-Version: 0.9.9.1
+Version: 1.0.0
 Summary: A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). 
 Home-page: https://github.com/ArpiarSaundersLab/annsql
 Author: Kenny Pavan
@@ -89,7 +89,7 @@ asql = AnnSQL(db="db/pbmc3k_reduced.asql")
 asql.query("SELECT * FROM adata LIMIT 5")
 ```
 
-## Advanced Queries and usage
+## Advanced Queries and Usage
 ```python
 from AnnSQL import AnnSQL
 import scanpy as sc
@@ -112,45 +112,6 @@ asql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)")
 #taking the correlation of genes ITGB2 and SSU72 in dendritic cells that express either gene > 0
 asql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_labels = 'Dendritic' AND (ITGB2 > 0 OR SSU72 >0)")
 ```
-
-## Accessing and processing 4.4 million cells on a laptop
-To illustrate how AnnSQL can be used to access atlas sized datasets on a local computer, we examine the single nuclei dataset presented in "The molecular cytoarchitecture of the adult mouse brain" by <a href='https://www.nature.com/articles/s41586-023-06818-7' target="_blank">Langlieb et al 2023</a>. First, we opened the <a href='https://docs.braincelldata.org/downloads/index.html' target="_blank">atlas</a> AnnData object in backed mode and created a `asql` database using the `MakeDb` class provided with AnnSQL. Next, we performed some basic querying of the data to return subsets. We then calculated total counts per gene which we accomplished entirely in SQL; even with the non-optimized schema. Next, we blended Python and SQL to normalize and log the counts per library. Lastly, we calculated highly variable genes in the entire dataset using two SQL queries which: (1) provide a list of all gene names in the X table, then (2) use those gene names to calculate the variance for each gene and return a list of the top 2000. Our results demonstrate AnnSQL is a capable tool for basic (and possibly more advanced) analyses of atlas scale datasets. 
-
-```python
-#import libraries
-from MakeDb import MakeDb
-from AnnSQL import AnnSQL
-
-#load the atlas dataset in backed mode
-adata = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r+")
-
-#build the asql database | Runtime 7hr 10min
-MakeDb(adata=adata, db_name="Macosko_Mouse_Atlas", db_path="../db/", layers=["X", "obs"])
-
-#query example | Runtime: 0.24sec
-asql.query("SELECT ENSMUSG00000070880 FROM X WHERE ENSMUSG00000070880 > 0")
-
-#count the number of cells in each cluster | Runtime: 0.35sec
-asql.query("SELECT ClusterNm, COUNT(cell_id) AS num_cells FROM obs GROUP BY ClusterNm ORDER BY num_cells DESC")
-
-#determine the total counts per cell library | Runtime: 4min 30sec
-asql.calculate_total_counts(chunk_size=950)
-
-#normalize umi counts to 10k per cell | Runtime: 1hr 48mins
-asql.expression_normalize(total_counts_per_cell=1e4, chunk_size=300) 
-
-#log scale the normalized counts | Runtime: 59mins 13sec
-asql.expression_log(log_type="LN", chunk_size=250)
-
-```
-
-### Laptop system details for runtimes above
-- **Memory:**                                      40.0 GiB
-- **Processor:**                                   12th Gen Intel® Core™ i7-1255U × 12
-- **Disk Capacity:**                               1.0 TB
-- **OS:**                                     	   Ubuntu 24.04.1 LTS
-- **Python Version:**                              3.12
-
 
 <br>
 <br>
