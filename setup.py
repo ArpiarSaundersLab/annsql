@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
 	name='AnnSQL',
-	version='v1.0.0',
+	version='v1.0.1',
 	author="Kenny Pavan",
 	author_email="pavan@ohsu.edu",
 	description="A Python SQL tool for converting Anndata objects to a relational DuckDb database. Methods are included for querying and basic single-cell preprocessing (experimental). ",
