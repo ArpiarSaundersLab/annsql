@@ -26,5 +26,6 @@ setuptools.setup(
 		'memory-profiler>=0.61.0',
 		'psutil>=6.0.0',
 		'pyarrow>=17.0.0',
+		'polars>=1.24.0',
 	],
 )

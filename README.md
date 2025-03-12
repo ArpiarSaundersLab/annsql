@@ -42,7 +42,7 @@ asql.query("SELECT * FROM adata LIMIT 10")
 
 
 ## Basic Usage (On-Disk)
-For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk and queried.
+For larger datasets, AnnSQL can create a local database (asql) from the AnnData object. This database is stored on-disk, can be queried, and is persistent.
 ```python
 import scanpy as sc
 from AnnSQL import AnnSQL
