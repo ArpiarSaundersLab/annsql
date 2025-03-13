@@ -1,5 +1,14 @@
 <center><img src="examples/images/logo.png" width=500></center>
-<br />
+<br>
+<br>
+
+<center>
+<img src="https://img.shields.io/badge/build-passing-brightgreen">
+<img src="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql">
+<img src="https://static.pepy.tech/badge/annsql/month">
+</center>
+<br>
+<br>
 
 # Query AnnData Objects with SQL
 The Python based AnnSQL package enables SQL-based queries on [AnnData](https://anndata.readthedocs.io/en/latest/) objects, returning results as either a [Pandas](https://pandas.pydata.org/) DataFrame, an AnnData object, or a [Parquet](https://parquet.apache.org/) file that can easily be imported into a variety of data analysis tools. Behind the scenes, AnnSQL converts the layers of an AnnData object into a relational [DuckDB](https://duckdb.org/) database. Each layer is stored as an individual table, allowing for simple or complex SQL queries, including table joins.
