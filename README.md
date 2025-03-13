@@ -1,14 +1,15 @@
-<center><img src="examples/images/logo.png" width=500></center>
-<br>
+<p align="center">
+	<img src="examples/images/logo.png" width=500>
+</p>
+
 <br>
 
-<center>
+<p align="center">
+	<img src="https://img.shields.io/badge/build-passing-brightgreen">
+	<img src="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql">
+	<img src="https://static.pepy.tech/badge/annsql/month">
+</p>
 
-![Build](https://img.shields.io/badge/build-passing-brightgreen "Build")
-![Release](https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql "Release")
-![Downloads](https://static.pepy.tech/badge/annsql/month "Downloads")
-</center>
-<br>
 <br>
 
 # Query AnnData Objects with SQL
