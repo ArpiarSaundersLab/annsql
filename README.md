@@ -5,9 +5,9 @@
 <br>
 
 <p align="center">
-	<img src="https://img.shields.io/badge/build-passing-brightgreen">
-	<img src="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql">
-	<img src="https://static.pepy.tech/badge/annsql/month">
+	<a href="https://github.com/ArpiarSaundersLab/annsql/tree/main/tests"><img src="https://img.shields.io/badge/build-passing-brightgreen"></a>
+	<a href="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql"><img src="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql"></a>
+	<a href="https://static.pepy.tech/badge/annsql/month"><img src="https://static.pepy.tech/badge/annsql/month"></a>
 </p>
 
 <br>
