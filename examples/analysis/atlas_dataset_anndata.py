@@ -5,6 +5,7 @@ import time
 from AnnSQL import AnnSQL
 from AnnSQL.MakeDb import MakeDb
 import pandas as pd
+import gc
 
 ####################################################################################################
 # Run the AnnSQL runtime and memory of all major procedures
@@ -35,28 +36,69 @@ def normalize_total_memory_wrapper():
 # NOTE: all other procedures for adata failed except filtering on laptop and HPC
 ####################################################################################################
 
-#load the atlas dataset (4.4 million cells) in backed mode
-adata_mem = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad")
+# #load the atlas dataset (4.4 million cells) in memory
+# adata_backed = sc.read_h5ad("/home/exacloud/gscratch/SaundersLab/24-09_CellTypist/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r")
 
-#simple filter backed mode
+# #simple filter in backed
+# start_time = time.time()
+# result = memory_usage(filter_annsql_memory_backed_wrapper)
+# runtime = time.time() - start_time
+# max_memory = max(result) - min(result)
+# print("filter_annsql_memory_backed_wrapper", max_memory, runtime)
+# df = pd.read_csv("atlas_profile_hpc.csv")
+# df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_backed_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+# df.to_csv("atlas_profile_hpc.csv", index=False)
+
+
+#load the atlas dataset (4.4 million cells) in backed mode
+adata_mem = sc.read_h5ad("/home/exacloud/gscratch/SaundersLab/24-09_CellTypist/chunked_approach/Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad")
+
+#simple filter memory mode
 start_time = time.time()
 result = memory_usage(filter_annsql_inmem_memory_wrapper)
 runtime = time.time() - start_time
 max_memory = max(result) - min(result)
 print("filter_annsql_memory_inmem_wrapper", max_memory, runtime)
-df = pd.read_csv("../results/atlas_profile.csv")
+df = pd.read_csv("atlas_profile_hpc.csv")
 df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_inmem_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
-df.to_csv("../results/atlas_profile.csv", index=False)
+df.to_csv("atlas_profile_hpc.csv", index=False)
 
-#load the atlas dataset (4.4 million cells) in memory
-adata_backed = sc.read_h5ad("Macosko_Mouse_Atlas_Single_Nuclei.Use_Backed.h5ad", backed="r+")
-
-#simple filter in memory
+#simple filter memory mode
 start_time = time.time()
-result = memory_usage(filter_annsql_memory_backed_wrapper)
+result = memory_usage(filter_annsql_inmem_memory_wrapper)
 runtime = time.time() - start_time
 max_memory = max(result) - min(result)
-print("filter_annsql_memory_backed_wrapper", max_memory, runtime)
-df = pd.read_csv("../results/atlas_profile.csv")
-df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_backed_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
-df.to_csv("../results/atlas_profile.csv", index=False)
+print("filter_annsql_memory_inmem_wrapper", max_memory, runtime)
+df = pd.read_csv("atlas_profile_hpc.csv")
+df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_inmem_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+df.to_csv("atlas_profile_hpc.csv", index=False)
+
+#simple filter memory mode
+start_time = time.time()
+result = memory_usage(filter_annsql_inmem_memory_wrapper)
+runtime = time.time() - start_time
+max_memory = max(result) - min(result)
+print("filter_annsql_memory_inmem_wrapper", max_memory, runtime)
+df = pd.read_csv("atlas_profile_hpc.csv")
+df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_inmem_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+df.to_csv("atlas_profile_hpc.csv", index=False)
+
+#simple filter memory mode
+start_time = time.time()
+result = memory_usage(filter_annsql_inmem_memory_wrapper)
+runtime = time.time() - start_time
+max_memory = max(result) - min(result)
+print("filter_annsql_memory_inmem_wrapper", max_memory, runtime)
+df = pd.read_csv("atlas_profile_hpc.csv")
+df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_inmem_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+df.to_csv("atlas_profile_hpc.csv", index=False)
+
+#simple filter memory mode
+start_time = time.time()
+result = memory_usage(filter_annsql_inmem_memory_wrapper)
+runtime = time.time() - start_time
+max_memory = max(result) - min(result)
+print("filter_annsql_memory_inmem_wrapper", max_memory, runtime)
+df = pd.read_csv("atlas_profile_hpc.csv")
+df = pd.concat([df, pd.DataFrame([["filter_annsql_memory_inmem_wrapper", max_memory, runtime]], columns=["function", "max_memory","runtime"])])
+df.to_csv("atlas_profile_hpc.csv", index=False)
