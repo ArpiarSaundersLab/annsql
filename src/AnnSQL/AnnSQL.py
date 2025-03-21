@@ -789,7 +789,7 @@ class AnnSQL:
 						print_progress=False, 
 						zero_center=False, 
 						top_variable_genes=2000,
-						max_cells_memory_threshold=10000,
+						max_cells_memory_threshold=25000,
 						gene_field="gene_names"):
 
 		"""
@@ -804,6 +804,7 @@ class AnnSQL:
 			zero_center (bool, default=False): Whether to zero-center the data before PCA.
 			top_variable_genes (int, default=2000): Number of top variable genes to use for PCA.
 			max_cells_memory_threshold (int, default=5000): Maximum number of cells to hold in memory before using SQL. Beyond this threshold, covariance matrix calculation is done in SQL to be more memory efficient.
+			gene_field (str, default="gene_names"): The field name for gene names in the var database table.
 
 		Functionality:
 			1. Checks if the specified table exists. If not, raises a ValueError.
@@ -1055,6 +1056,7 @@ class AnnSQL:
 		Parameters:
 			min_gene_counts (int, optional): The minimum gene counts threshold. Genes with counts below this threshold will be removed. Defaults to None.
 			max_gene_counts (int, optional): The maximum gene counts threshold. Genes with counts above this threshold will be removed. Defaults to None.
+			gene_field (str, optional): The field name for gene names in the var database table. Defaults to "gene_names".
 
 		Notes:
 			- This method removes genes with counts below the minimum threshold and above the maximum threshold from the 'X' table.

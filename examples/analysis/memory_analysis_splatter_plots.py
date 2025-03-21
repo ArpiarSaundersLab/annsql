@@ -29,7 +29,7 @@ comparisons = comparisons.replace([np.inf, -np.inf], np.log(0.01))
 #set the colors of the plots (ansql1, anndata in-mem, ansql2, anndata backed, seurat)
 colors = ["#07b88e", "#a4a6a4", "#07b88e", "#a4a6a4","#FFA067"]
 
-#plot aggregation of all filters memory usage
+#plot aggregation of all filters runtime
 sns.set(style="whitegrid")
 plt.figure(dpi=1200)
 sns.lineplot(data=comparisons, x='size', y='memory_log', hue='method', palette=colors, errorbar="ci")
@@ -52,7 +52,6 @@ plt.gca().spines['bottom'].set_color('black')
 plt.title("Memory Profiles\n", fontsize=22, fontweight='bold')
 plt.text(72000, 10.5, "(6) Filters vs. Queries", fontsize=16)
 plt.show()
-
 
 
 

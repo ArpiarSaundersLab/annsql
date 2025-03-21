@@ -42,7 +42,7 @@ plt.xticks(fontsize=18, fontweight='bold')
 plt.yticks(fontsize=18, fontweight='bold')	
 plt.grid(False)
 plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-# plt.legend().remove()
+plt.legend().remove()
 sns.despine(top=True)
 plt.gca().spines['left'].set_linewidth(3)
 plt.gca().spines['left'].set_color('black')
@@ -51,8 +51,6 @@ plt.gca().spines['bottom'].set_color('black')
 plt.title("Memory Profiles\n", fontsize=22, fontweight='bold')
 plt.text(72000, 11.5, "(6) Filters vs. Queries", fontsize=16)
 plt.show()
-
-
 
 
 #statistical analysis between the two types of AnnData

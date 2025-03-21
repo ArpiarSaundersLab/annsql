@@ -94,6 +94,31 @@ asql.query("SELECT SUM(COLUMNS(*)) FROM (SELECT * EXCLUDE (cell_id) FROM X)")
 
 #taking the correlation of genes ITGB2 and SSU72 in dendritic cells that express either gene > 0
 asql.query("SELECT corr(ITGB2,SSU72) as correlation FROM adata WHERE bulk_labels = 'Dendritic' AND (ITGB2 > 0 OR SSU72 >0)")
+
+############################################################################
+# Extended AnnSQL methods (See: https://docs.annsql.com/preprocessing)
+# These methods are either SQL based or Python/SQL hybrid implementations.
+############################################################################
+
+#basic QC on the dataset
+asql.calculate_total_counts()
+asql.filter_by_cell_counts(min_cell_count=1000, max_cell_count=50000)
+asql.filter_by_gene_counts(min_gene_counts=100, max_gene_counts=10000)
+
+#normalize & log umi counts
+asql.expression_normalize(total_counts_per_cell=10000)
+asql.expression_log(log_type="LN")
+
+#select highly variable genes
+asql.calculate_variable_genes(save_var_names=True, top_variable_genes=1000)
+
+#run pca
+asql.calculate_pca(n_pcs=50, top_variable_genes=1000, zero_center=False)
+
+#umap, cluster, then and plot.
+asql.calculate_umap()
+asql.calculate_leiden_clusters(resolution=0.25, n_neighbors=5)
+asql.plot_umap(color_by="leiden_clusters", annotate=True)
 ```
 
 <br>
