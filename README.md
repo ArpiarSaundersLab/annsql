@@ -8,6 +8,7 @@
 	<a href="https://github.com/ArpiarSaundersLab/annsql/tree/main/tests"><img src="https://img.shields.io/badge/build-passing-brightgreen"></a>
 	<a href="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql"><img src="https://img.shields.io/github/v/release/ArpiarSaundersLab/annsql"></a>
 	<a href="https://static.pepy.tech/badge/annsql/month"><img src="https://static.pepy.tech/badge/annsql/month"></a>
+	<a href="https://static.pepy.tech/badge/annsql"><img src="https://static.pepy.tech/badge/annsql"></a>
 </p>
 
 <br>
@@ -126,7 +127,7 @@ asql.plot_umap(color_by="leiden_clusters", annotate=True)
 
 
 ## Reference
-AnnSQL: A Python SQL-based package for large-scale single-cell genomics analysis on a laptop<br />
+AnnSQL: A Python SQL-based package for fast large-scale single-cell genomics analysis using minimal computational resources<br />
 Kenny Pavan, Arpiar Saunders<br />
 bioRxiv 2024.11.02.621676; [doi: https://doi.org/10.1101/2024.11.02.621676](https://www.biorxiv.org/content/10.1101/2024.11.02.621676)
 
