@@ -390,7 +390,7 @@ class BuildDb:
 		if string[0].isdigit():
 			return 'n'+string.replace("-", "_").replace(".", "_")
 		else:
-			return string.replace("-", "_").replace(".", "_").replace("(", "_").replace(")", "_").replace(",", "_").replace(" ", "_")
+			return string.replace("-", "_").replace(".", "_").replace("(", "_").replace(")", "_").replace(",", "_").replace(" ", "_").replace("/", "_")
 
 	def determine_buffer_status(self):
 		"""
