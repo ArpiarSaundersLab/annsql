@@ -322,6 +322,25 @@ class AnnSQL:
 			self.close_db()
 		logging.info("All tables exported as parquet files in the 'parquet_files' directory")
 	
+	def export_X_to_csv(self, filename="X_table.csv"):
+		"""
+		Exports the X table to a CSV file.
+		
+		Parameters:
+			filename (str): The name of the CSV file to save the X table to. Defaults to "X_table.csv".
+		
+		Example:
+			asql = AnnSQL(db='db/pbmc.asql')
+			asql.export_X_to_csv("my_data.csv")
+		"""
+		
+		query = "SELECT * FROM X"
+		query = "COPY ("+query+") TO '"+filename+"' (FORMAT CSV, HEADER);"
+		self.open_db()
+		self.conn.execute(query)
+		self.close_db()
+		print(f"X table exported to {filename}")
+	
 	def replace_special_chars(self, string):
 		"""
 		Replaces special characters in a string with underscores. Is useful when creating tables from AnnData objects as certain characters in gene names can cause issues with column names.
