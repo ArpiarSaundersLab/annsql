@@ -35,7 +35,7 @@ decorator==5.1.1
 deepdiff==7.0.1
 defusedxml==0.7.1
 docutils==0.21.2
-duckdb==1.2.2
+duckdb==1.5.5
 e==1.4.5
 executing==2.1.0
 fastjsonschema==2.21.1
@@ -48,6 +48,7 @@ h11==0.14.0
 h5py==3.12.1
 httpcore==1.0.7
 httpx==0.28.1
+id==1.5.0
 idna==3.10
 igraph==0.11.8
 importlib-metadata==6.11.0
@@ -179,7 +180,7 @@ tomli==2.0.1
 tornado==6.4.1
 tqdm==4.67.0
 traitlets==5.14.3
-twine==5.1.1
+twine==6.1.0
 typeguard==4.3.0
 types-requests==2.32.0.20241016
 typing_extensions==4.12.2
