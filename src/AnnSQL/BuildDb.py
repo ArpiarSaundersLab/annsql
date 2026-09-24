@@ -96,18 +96,17 @@ class BuildDb:
 		
 		#The var_names_make_unique appears doesn't handle case sensitively. SQL requires true unique column names with case sensitivity
 		#AnnData would treat something like Gad1 and gad1 as different genes
-		var_names_upper = pd.DataFrame(var_names).apply(lambda x: x.str.upper())
 		var_names = list(var_names)
 		start_time = time.time()
 		unique_counter = {}
-		for i in range(len(var_names_upper)):
-			if var_names_upper.duplicated()[i] == True:
-				if var_names_upper.iloc[i][0] in unique_counter:
-					unique_counter[var_names_upper.iloc[i][0] ]+=1
-					var_names[i] = var_names[i] + f"_{unique_counter[var_names_upper.iloc[i][0] ]}"
-				else:
-					unique_counter[var_names_upper.iloc[i][0] ] = 1
-					var_names[i] = var_names[i] + f"_{unique_counter[var_names_upper.iloc[i][0] ]}"
+		seen = set()
+		for i, name in enumerate(var_names):
+			key = name.upper()
+			if key in seen:
+				unique_counter[key] = unique_counter.get(key, 0) + 1
+				var_names[i] = f"{name}_{unique_counter[key]}"
+			else:
+				seen.add(key)
 		end_time = time.time()
 
 		if self.print_output == True:
@@ -136,46 +135,57 @@ class BuildDb:
 					os.remove(f"{self.db_path}{self.db_name}_X.parquet")
 				print(f"Starting chunked mode X table data insert. Total rows: {self.adata.shape[0]}")
 				writer = None
+				if self.make_buffer_file == False:
+					#insert all chunks in a single transaction. Committing each chunk makes duckdb reload the
+					#partially filled last row group on every append, costing ~0.5MB per column (~15GB at 30k genes).
+					#insertion order is kept (the default): with preserve_insertion_order=false each chunk starts new
+					#parallel row groups inside the transaction and memory grows until duckdb runs out
+					self.conn.execute("BEGIN TRANSACTION;")
 
-				for start in range(0, self.adata.shape[0], chunk_size):
-					start_time = time.time()
-					end = min(start + chunk_size, self.adata.shape[0])
+				try:
+					for start in range(0, self.adata.shape[0], chunk_size):
+						start_time = time.time()
+						end = min(start + chunk_size, self.adata.shape[0])
 
-					#reconnect to the database :/
-					#self.conn = duckdb.connect(f"{self.db_path}{self.db_name}.asql", config=self.db_config)
+						#slice X directly (avoids building an AnnData view). In backed mode this reads
+						#only the requested rows; backed sparse X is a _CSRDataset, which issparse() misses
+						X_chunk = self.adata.X[start:end]
+						if issparse(X_chunk) or hasattr(X_chunk, "toarray"):
+							X_chunk = X_chunk.toarray()
+						X_chunk = np.asarray(X_chunk, dtype=np.float32)
 
-					if issparse(self.adata.X) == True:
-						X_chunk_df = np.array(self.adata[start:end].X.todense())
-					else:
-						X_chunk_df = self.adata[start:end].X
-					
-					X_chunk_df = pl.DataFrame({"cell_id": self.adata.obs.index[start:end],**{name: X_chunk_df[:, idx] for idx, name in enumerate(var_names_clean)}})
-					self.conn.register(f"X_chunk_df", X_chunk_df)
-					
+						#build the frame in one bulk copy rather than one Series per gene
+						X_chunk_df = pl.concat([
+							pl.DataFrame({"cell_id": self.adata.obs.index[start:end]}),
+							pl.from_numpy(X_chunk, schema=var_names_clean, orient="row")
+						], how="horizontal")
+						del X_chunk
+						self.conn.register(f"X_chunk_df", X_chunk_df)
+
+						if self.make_buffer_file == False:
+							self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df;")
+						else:
+							table = X_chunk_df.to_arrow()
+							if writer is None:
+								writer = pq.ParquetWriter(f"{self.db_path}{self.db_name}_X.parquet", table.schema)
+							writer.write_table(table, row_group_size=chunk_size)
+							del table
+
+						self.conn.unregister(f"X_chunk_df")
+						del X_chunk_df
+						print(f"Processed chunk {start}-{end-1} in {time.time()-start_time} seconds")
+
 					if self.make_buffer_file == False:
-						self.conn.execute("BEGIN TRANSACTION;")
-						self.conn.execute("SET preserve_insertion_order = false;")
-						self.conn.execute("INSERT INTO X SELECT * FROM X_chunk_df;")
 						self.conn.execute("COMMIT;")
-					else:
-						table = X_chunk_df.to_arrow()
-						if writer is None:
-							writer = pq.ParquetWriter(f"{self.db_path}{self.db_name}_X.parquet", table.schema)
-						writer.write_table(table)
-					
-					self.conn.unregister(f"X_chunk_df")
-
-					# self.conn.close()
-					# self.conn = None
-
-					del X_chunk_df
-					X_chunk_df = None
-					gc.collect()
-					print(f"Processed chunk {start}-{end-1} in {time.time()-start_time} seconds")
+				except BaseException:
+					if self.make_buffer_file == False:
+						self.conn.execute("ROLLBACK;")
+					raise
 
 				if writer is not None:
 					writer.close()
-					
+				gc.collect()
+
 				if self.make_buffer_file == True:
 					start_time = time.time()
 					print("\nToo close for missiles, switching to guns\nCreating X table from buffer file.\nThis may take a while...")
@@ -197,11 +207,16 @@ class BuildDb:
 						print("Converting sparse to dense")
 					self.adata.X = self.adata.X.todense()
 
+				X_pl = pl.concat([
+					pl.DataFrame({"cell_id": self.adata.obs.index}),
+					pl.from_numpy(np.asarray(self.adata.X), schema=var_names_clean, orient="row")
+				], how="horizontal")
+
 				# #is this an in-memory database?
 				if self.db_path == None:
-					self.conn.register("X", pl.DataFrame({"cell_id": self.adata.obs.index,**{name: self.adata.X[:, idx] for idx, name in enumerate(var_names_clean)}})) 
+					self.conn.register("X", X_pl)
 				else:
-					X_df = self.conn.register("X_df", pl.DataFrame({"cell_id": self.adata.obs.index,**{name: self.adata.X[:, idx] for idx, name in enumerate(var_names_clean)}})) 
+					X_df = self.conn.register("X_df", X_pl)
 					self.conn.execute("BEGIN TRANSACTION;")
 					self.conn.execute("SET preserve_insertion_order = false;")
 					self.conn.execute("INSERT INTO X SELECT * FROM X_df")
@@ -288,7 +303,10 @@ class BuildDb:
 		#indexes (Warning: resource intensive. only recommended for small datasets)
 		if self.create_all_indexes == True:
 			if "X" in self.layers:
-				for column in X_df.columns:
+				#read the columns back from the table: the chunked path never builds a single X frame,
+				#so the old X_df reference raised NameError whenever create_all_indexes was used with chunking
+				X_columns = [row[0] for row in self.conn.execute("DESCRIBE X").fetchall()]
+				for column in X_columns:
 					try:
 						self.conn.execute(f'CREATE INDEX idx_{column.replace("-", "_").replace(".", "_")}_X ON X ("{column}")')
 					except:

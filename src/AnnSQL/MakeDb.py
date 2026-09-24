@@ -5,7 +5,7 @@ import duckdb
 import os 
 
 class MakeDb:
-	def __init__(self, adata=None, 	db_name=None, db_path="db/", create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=10000,make_buffer_file=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], print_output=True, db_config={}, delete_existing_db=False):
+	def __init__(self, adata=None, 	db_name=None, db_path="db/", create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=10000,make_buffer_file=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], print_output=True, db_config={}, delete_existing_db=False, row_group_size=None, block_size=None):
 		"""
 		Initializes the MakeDb object. This object is used to create a database from an AnnData object by using the BuildDb method.
 
@@ -20,6 +20,11 @@ class MakeDb:
 			make_buffer_file (bool, optional): Whether to create a buffer file for storing intermediate data. Necessary for low memory systems (<=12Gb).
 			layers (list of str, optional): The layers to be included in the database.
 			print_output (bool, optional): Whether to print output messages.
+			row_group_size (int, optional): DuckDB row group size for the database file. Smaller values (e.g. 8192) bound how many
+				rows of X are buffered in memory before being written to disk. Defaults to None (DuckDB default of 122880).
+			block_size (int, optional): DuckDB storage block size in bytes (power of two, e.g. 16384). DuckDB reserves about one block
+				per column while inserting, so with ~30k genes the default 262144 costs ~8-15GB. Defaults to None (DuckDB default).
+				For wide datasets use together with row_group_size and a memory limit, e.g. db_config={'memory_limit': '4GB'}.
 
 		Returns:
 			None
@@ -38,6 +43,8 @@ class MakeDb:
 		self.print_output = print_output
 		self.db_config = db_config
 		self.delete_existing_db = delete_existing_db
+		self.row_group_size = row_group_size
+		self.block_size = block_size
 		self.validate_params()
 		self.build_db()
 
@@ -58,6 +65,20 @@ class MakeDb:
 		if self.adata is not None:
 			if not isinstance(self.adata, sc.AnnData):
 				raise ValueError('adata must be a scanpy AnnData object')
+		if self.row_group_size is not None:
+			#duckdb requires the row group size to be a positive multiple of its vector size (2048)
+			if not isinstance(self.row_group_size, int) or isinstance(self.row_group_size, bool) or self.row_group_size <= 0:
+				raise ValueError('row_group_size must be a positive integer')
+			if self.row_group_size % 2048 != 0:
+				raise ValueError(f'row_group_size must be a multiple of 2048 (duckdb vector size), got {self.row_group_size}')
+		if self.block_size is not None:
+			#duckdb accepts a power of two between its minimum and maximum block size
+			if not isinstance(self.block_size, int) or isinstance(self.block_size, bool) or self.block_size <= 0:
+				raise ValueError('block_size must be a positive integer')
+			if self.block_size & (self.block_size - 1) != 0:
+				raise ValueError(f'block_size must be a power of two, got {self.block_size}')
+			if not 16384 <= self.block_size <= 262144:
+				raise ValueError(f'block_size must be between 16384 and 262144, got {self.block_size}')
 
 	def create_db(self):
 		"""
@@ -79,7 +100,20 @@ class MakeDb:
 		else:
 			if not os.path.exists(self.db_path):
 				os.makedirs(self.db_path)
-			self.conn = duckdb.connect(self.db_path+self.db_name+'.asql', config=self.db_config)
+			attach_options = []
+			if self.block_size is not None:
+				attach_options.append(f"BLOCK_SIZE {self.block_size}")
+			if self.row_group_size is not None:
+				attach_options.append(f"ROW_GROUP_SIZE {self.row_group_size}")
+
+			if len(attach_options) == 0:
+				self.conn = duckdb.connect(self.db_path+self.db_name+'.asql', config=self.db_config)
+			else:
+				#block and row group sizes can only be set when attaching a database file
+				db_file = (self.db_path+self.db_name+'.asql').replace("'", "''")
+				self.conn = duckdb.connect(config=self.db_config)
+				self.conn.execute(f"ATTACH '{db_file}' AS asql_db ({', '.join(attach_options)})")
+				self.conn.execute("USE asql_db")
 
 	def build_db(self):
 		"""
