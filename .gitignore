@@ -17,3 +17,5 @@ build_wheel.sh
 /**/__pycache__/
 /**/.pytest_cache/
 site/
+*.db
+*.asql.wal

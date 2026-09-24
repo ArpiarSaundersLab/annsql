@@ -17,13 +17,18 @@ import warnings
 warnings.filterwarnings('ignore')
 from scipy.sparse import issparse
 
-#TODO debug duckdb memory leak on daabases with >30k genes. 
+# Reproduces the memory cost of inserting into a very wide (>30k column) duckdb table.
+# This is NOT a leak: duckdb reserves roughly one storage block per column while appending, so the
+# cost scales with the COLUMN count, not the row count. With the default 256KB block that is ~8GB
+# at 30k genes, and committing each chunk separately pays it again on every append.
+# AnnSQL's chunked builder avoids it by inserting all chunks in a single transaction; MakeDb also
+# exposes block_size/row_group_size so the per-column reservation can be shrunk (see MakeDb docs).
 def run_test(chunk):
 
 	# Df with 1k rows and 30k columns. 
 	# This is a very similar matrix to a cell x gene matrix 
 	# which typically will have >50k rows and >30k columns.
-	n_rows = 10
+	n_rows = 100
 	n_columns = 30000
 	df = np.random.rand(n_rows, n_columns)
 	df = pd.DataFrame(df)
