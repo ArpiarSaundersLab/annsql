@@ -5,6 +5,15 @@ import duckdb
 import os 
 
 class MakeDb:
+
+	#duckdb reserves roughly one storage block per column while appending, so the append cost is
+	#(columns x block_size). At duckdb's default 262144 byte block that is ~2GB at 8k genes and
+	#~8GB at 30k, which raises OutOfMemoryError under a memory_limit somewhere between 6k and 8k
+	#columns. 16384 is duckdb's minimum block size and measured faster to build and query, with
+	#an effectively identical file size, so it is applied automatically to wide matrices.
+	WIDE_GENE_THRESHOLD = 5000
+	WIDE_BLOCK_SIZE = 16384
+
 	def __init__(self, adata=None, 	db_name=None, db_path="db/", create_all_indexes=False, create_basic_indexes=False, convenience_view=True, chunk_size=10000,make_buffer_file=False, layers=["X", "obs", "var", "var_names", "obsm", "varm", "obsp", "uns"], print_output=True, db_config={}, delete_existing_db=False, row_group_size=None, block_size=None):
 		"""
 		Initializes the MakeDb object. This object is used to create a database from an AnnData object by using the BuildDb method.
@@ -22,9 +31,10 @@ class MakeDb:
 			print_output (bool, optional): Whether to print output messages.
 			row_group_size (int, optional): DuckDB row group size for the database file. Smaller values (e.g. 8192) bound how many
 				rows of X are buffered in memory before being written to disk. Defaults to None (DuckDB default of 122880).
-			block_size (int, optional): DuckDB storage block size in bytes (power of two, e.g. 16384). DuckDB reserves about one block
-				per column while inserting, so with ~30k genes the default 262144 costs ~8-15GB. Defaults to None (DuckDB default).
-				For wide datasets use together with row_group_size and a memory limit, e.g. db_config={'memory_limit': '4GB'}.
+			block_size (int, optional): DuckDB storage block size in bytes (power of two between 16384 and 262144). DuckDB
+				reserves about one block per column while inserting, so with ~30k genes the default 262144 costs ~8GB and
+				raises OutOfMemoryError under a memory limit. Defaults to None, which selects 16384 automatically when the
+				matrix has more than 5000 genes and leaves DuckDB's default in place otherwise. Pass a value to override.
 
 		Returns:
 			None
@@ -46,7 +56,27 @@ class MakeDb:
 		self.row_group_size = row_group_size
 		self.block_size = block_size
 		self.validate_params()
+		self.apply_wide_data_defaults()
 		self.build_db()
+
+	def apply_wide_data_defaults(self):
+		"""
+		Chooses a smaller duckdb storage block size for matrices with many genes.
+
+		Only applies when the caller did not pass `block_size` explicitly, and only when the matrix is
+		wider than `WIDE_GENE_THRESHOLD` columns. Narrow matrices keep duckdb's default block size.
+
+		Returns:
+			None
+		"""
+		if self.block_size is not None or self.adata is None:
+			return
+		if self.adata.shape[1] <= self.WIDE_GENE_THRESHOLD:
+			return
+		self.block_size = self.WIDE_BLOCK_SIZE
+		if self.print_output == True:
+			print(f"Detected {self.adata.shape[1]} genes. Using duckdb block_size={self.block_size} to "
+				  f"limit append memory. Pass block_size explicitly to override.")
 
 	def validate_params(self):
 		"""
