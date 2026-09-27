@@ -15,6 +15,51 @@ class TestDatabase(unittest.TestCase):
 		self.db_name = "pbmc68k_reduced"
 		self.db_file = os.path.join(self.db_path, f"{self.db_name}.asql")
 
+	def make_wide_adata(self, genes, cells=100):
+		#pbmc68k_reduced has only 765 genes, so the wide-data path needs a synthetic matrix
+		import numpy as np, pandas as pd, anndata as ad, scipy.sparse as sp
+		X = sp.random(cells, genes, density=0.05, format="csr", dtype=np.float32, random_state=0)
+		return ad.AnnData(X, obs=pd.DataFrame(index=[f"c{i}" for i in range(cells)]),
+						  var=pd.DataFrame(index=[f"G{i}" for i in range(genes)]))
+
+	def block_size_of(self, db_file):
+		import duckdb
+		conn = duckdb.connect(db_file, read_only=True)
+		size = conn.execute("SELECT max(block_size) FROM pragma_database_size() WHERE block_size > 0").fetchone()[0]
+		conn.close()
+		return size
+
+	def test_wide_data_block_size_default(self):
+		#a matrix wider than the threshold should pick duckdb's minimum block size automatically,
+		#otherwise duckdb reserves ~one 262144 byte block per column and runs out of memory
+		wide = self.make_wide_adata(MakeDb.WIDE_GENE_THRESHOLD + 1000)
+		if os.path.exists(self.db_file):
+			os.remove(self.db_file)
+		MakeDb(adata=wide, db_name=self.db_name, db_path=self.db_path, print_output=False,
+			   db_config={"memory_limit": "4GB"})
+		self.assertEqual(self.block_size_of(self.db_file), MakeDb.WIDE_BLOCK_SIZE)
+		os.remove(self.db_file)
+
+	def test_narrow_data_keeps_duckdb_default(self):
+		#below the threshold nothing should change, so existing databases keep their current format
+		narrow = self.make_wide_adata(MakeDb.WIDE_GENE_THRESHOLD - 1000)
+		if os.path.exists(self.db_file):
+			os.remove(self.db_file)
+		MakeDb(adata=narrow, db_name=self.db_name, db_path=self.db_path, print_output=False,
+			   db_config={"memory_limit": "4GB"})
+		self.assertNotEqual(self.block_size_of(self.db_file), MakeDb.WIDE_BLOCK_SIZE)
+		os.remove(self.db_file)
+
+	def test_explicit_block_size_overrides_default(self):
+		#an explicit block_size must win even when the matrix is wide
+		wide = self.make_wide_adata(MakeDb.WIDE_GENE_THRESHOLD + 1000)
+		if os.path.exists(self.db_file):
+			os.remove(self.db_file)
+		MakeDb(adata=wide, db_name=self.db_name, db_path=self.db_path, print_output=False,
+			   block_size=262144, db_config={"memory_limit": "4GB"})
+		self.assertEqual(self.block_size_of(self.db_file), 262144)
+		os.remove(self.db_file)
+
 	def test_build_database(self):
 		if os.path.exists(self.db_file): #tearDown 
 			os.remove(self.db_file)
